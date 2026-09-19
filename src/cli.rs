@@ -54,7 +54,7 @@ impl CLI {
                         cli.inject_technique = args[i].clone();
                     }
                 }
-                "--syscall" | "-s" => {
+                "--syscall" | "-s" | "--func" => {
                     i += 1;
                     if i < args.len() {
                         cli.syscall_func = args[i].clone();
@@ -102,6 +102,10 @@ fn print_help() {
     println!();
     println!("OPTIONS:");
     println!("  -p, --pid <PID>       Target process ID (required)");
+    println!("  -s, --syscall <FUNC>  Target syscall function (syscall command)");
+    println!("  -f, --func <FUNC>     Target function name (alias for --syscall)");
+    println!("  -t, --technique <TEC> Injection technique (inject command)");
+    println!("  -u, --unhook <FUNC>   Target API to unhook (unhook command)");
     println!("  -n, --dry-run         Simulate without executing (default)");
     println!("  -x, --execute         Actually perform the operation");
     println!("  -c, --confirm         Confirm before executing");
