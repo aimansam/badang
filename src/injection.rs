@@ -2,7 +2,6 @@
 // Demonstrates process injection techniques for EDR evasion research
 // For authorized security research only.
 
-use std::process;
 
 /// Injection technique types
 pub enum InjectionTechnique {

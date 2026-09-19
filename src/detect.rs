@@ -41,7 +41,7 @@ pub const CLEAN_NT_EPILOGUE: [u8; 4] = [0x48, 0x83, 0xE4, 0xF0]; // rsp alignmen
 
 /// Check if an API is hooked by comparing bytes at its address
 /// This is a simplified check — production would parse the PE properly
-pub fn check_api(api_name: &str, address: usize, num_bytes: usize) -> HookStatus {
+pub fn check_api(api_name: &str, address: usize, _num_bytes: usize) -> HookStatus {
     // In production, this would:
     // 1. Read memory at `address` for `num_bytes`
     // 2. Read clean ntdll.dll from disk

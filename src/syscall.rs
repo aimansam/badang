@@ -6,19 +6,19 @@
 /// WARNING: These numbers vary by Windows version and build.
 /// Never hardcode syscall numbers in production tools.
 /// The syscall table changes between Windows versions.
-pub const SYS_NtCreateThreadEx: u32 = 0x5A;
-pub const SYS_NtAllocateVirtualMemory: u32 = 0x4B;
-pub const SYS_NtWriteVirtualMemory: u32 = 0x3A;
-pub const SYS_NtProtectVirtualMemory: u32 = 0x4D;
-pub const SYS_NtMapViewOfSection: u32 = 0x5B;
-pub const SYS_NtQueueApcThread: u32 = 0x2B;
-pub const SYS_NtCreateFile: u32 = 0x55;
-pub const SYS_NtOpenFile: u32 = 0x53;
-pub const SYS_NtReadFile: u32 = 0x3F;
-pub const SYS_NtWriteFile: u32 = 0x50;
-pub const SYS_NtDeviceIoControlFile: u32 = 0x52;
-pub const SYS_NtClose: u32 = 0x0C;
-pub const SYS_NtWaitForSingleObject: u32 = 0x66;
+pub const SYS_NT_CREATE_THREAD_EX: u32 = 0x5A;
+pub const SYS_NT_ALLOCATE_VIRTUAL_MEMORY: u32 = 0x4B;
+pub const SYS_NT_WRITE_VIRTUAL_MEMORY: u32 = 0x3A;
+pub const SYS_NT_PROTECT_VIRTUAL_MEMORY: u32 = 0x4D;
+pub const SYS_NT_MAP_VIEW_OF_SECTION: u32 = 0x5B;
+pub const SYS_NT_QUEUE_APC_THREAD: u32 = 0x2B;
+pub const SYS_NT_CREATE_FILE: u32 = 0x55;
+pub const SYS_NT_OPEN_FILE: u32 = 0x53;
+pub const SYS_NT_READ_FILE: u32 = 0x3F;
+pub const SYS_NT_WRITE_FILE: u32 = 0x50;
+pub const SYS_NT_DEVICE_IO_CONTROL_FILE: u32 = 0x52;
+pub const SYS_NT_CLOSE: u32 = 0x0C;
+pub const SYS_NT_WAIT_FOR_SINGLE_OBJECT: u32 = 0x66;
 
 /// Syscall table mapping function names to their syscall numbers
 /// across multiple Windows versions

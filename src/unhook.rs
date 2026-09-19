@@ -2,7 +2,6 @@
 // Demonstrates API unhooking techniques for EDR evasion research
 // For authorized security research only.
 
-use std::process;
 
 /// Analyze API unhooking for a target function
 pub fn analyze(func_name: &str) {
