@@ -85,7 +85,10 @@ pub fn invoke_syscall(func_name: &str, args: Vec<u64>) -> std::io::Result<u64> {
     eprintln!("[DRY RUN] Direct Syscall Invocation");
     eprintln!("  Function: {}", func_name);
     eprintln!("  Syscall number: 0x{:X}", syscall_num);
-    eprintln!("  Arguments: {} (would pass via rcx, rdx, r8, r9, stack)", args.len());
+    eprintln!(
+        "  Arguments: {} (would pass via rcx, rdx, r8, r9, stack)",
+        args.len()
+    );
     eprintln!("  Technique: Direct syscall bypasses user-mode hooks");
     eprintln!("  Detection: kernel callbacks and syscall monitoring may still detect");
     eprintln!();
@@ -135,9 +138,7 @@ pub fn dry_run(func_name: &str) {
     eprintln!("  Detection: kernel callbacks and syscall monitoring may still detect");
     eprintln!();
     eprintln!("  How it works:");
-    eprintln!(
-        "    1. Resolve syscall number for target function (varies by OS version)"
-    );
+    eprintln!("    1. Resolve syscall number for target function (varies by OS version)");
     eprintln!("    2. Set up arguments in registers (x64 calling convention)");
     eprintln!("       rcx=arg1, rdx=arg2, r8=arg3, r9=arg4, stack for extras");
     eprintln!("    3. Set rax = syscall number");

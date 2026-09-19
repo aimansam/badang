@@ -2,6 +2,31 @@
 // Demonstrates API unhooking techniques for EDR evasion research
 // For authorized security research only.
 
+/// Unhooking method types
+pub enum UnhookMethod {
+    DirectByte,
+    Trampoline,
+    InlineHook,
+}
+
+impl UnhookMethod {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "direct" | "directbyte" | "direct_bytes" => Some(Self::DirectByte),
+            "trampoline" => Some(Self::Trampoline),
+            "inline" | "inlinehook" => Some(Self::InlineHook),
+            _ => None,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Self::DirectByte => "Direct Byte Restoration",
+            Self::Trampoline => "Trampoline",
+            Self::InlineHook => "Inline Hook",
+        }
+    }
+}
 
 /// Analyze API unhooking for a target function
 pub fn analyze(func_name: &str) {

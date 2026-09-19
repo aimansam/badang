@@ -82,7 +82,10 @@ impl CLI {
         // PID is required for process-targeting commands
         if cli.command == "analyze" || cli.command == "inject" {
             if cli.target_pid == 0 {
-                eprintln!("ERROR: --pid <PID> is required for {} command.", cli.command);
+                eprintln!(
+                    "ERROR: --pid <PID> is required for {} command.",
+                    cli.command
+                );
                 eprintln!("Use --dry-run (default) to simulate without executing.");
                 process::exit(1);
             }

@@ -3,15 +3,16 @@
 // https://github.com/aimansam/badang
 
 mod cli;
+mod detect;
+mod injection;
 mod safety;
 mod syscall;
-mod injection;
+mod tests;
 mod unhook;
-mod detect;
 
-use std::process;
 use cli::CLI;
-use safety::{print_safety_warning, validate_target, check_execution_mode};
+use safety::{check_execution_mode, print_safety_warning, validate_target};
+use std::process;
 
 fn main() {
     let cli = CLI::parse();
@@ -26,7 +27,10 @@ fn main() {
             process::exit(1);
         }
         if cli.target_pid == 0 {
-            eprintln!("ERROR: --pid <PID> is required for {} command.", cli.command);
+            eprintln!(
+                "ERROR: --pid <PID> is required for {} command.",
+                cli.command
+            );
             eprintln!("Use --dry-run (default) to simulate without executing.");
             process::exit(1);
         }
@@ -66,7 +70,10 @@ fn main() {
         }
         "inject" => {
             if cli.dry_run {
-                println!("[DRY RUN] Would inject into PID {} using technique {}", cli.target_pid, cli.inject_technique);
+                println!(
+                    "[DRY RUN] Would inject into PID {} using technique {}",
+                    cli.target_pid, cli.inject_technique
+                );
                 injection::dry_run(cli.target_pid, &cli.inject_technique);
             } else {
                 injection::analyze(&cli.inject_technique);

@@ -6,6 +6,7 @@
 [![Windows](https://img.shields.io/badge/Windows-x86_64-blue?logo=windows)](https://windows.microsoft.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Security Research](https://img.shields.io/badge/Security-Research-red?logo=security)](https://github.com/aimansam/badang)
+[![CI](https://github.com/aimansam/badang/actions/workflows/ci.yml/badge.svg)](https://github.com/aimansam/badang/actions/workflows/ci.yml)
 
 ---
 
@@ -25,7 +26,7 @@
 Badang (named after the Malaysian folk hero known for supernatural strength) is a research toolkit that demonstrates techniques used to bypass or evade Endpoint Detection and Response (EDR) systems on Windows. It covers:
 
 1. **Direct Syscall Invocation** — Bypassing user-mode API hooks by calling kernel functions directly via the `syscall` instruction
-2. **Process Injection Techniques** — Methods for injecting code into other processes (CreateRemoteThread, APC, PE injection, Thread Hijack)
+2. **Process Injection Techniques** — Methods for injecting code into other processes (CreateRemoteThread, APC, Thread Hijack)
 3. **API Unhooking** — Restoring original function bytes to neutralize EDR hooks
 4. **Hook Detection Analysis** — Identifying which APIs have been hooked by security software
 
@@ -38,16 +39,16 @@ Each technique includes detailed documentation of how it works, why it can bypas
 | Module | Description |
 |--------|-------------|
 | **Syscall** | Direct syscall invocation with Windows syscall number reference table (13 NT APIs) |
-| **Injection** | 5 process injection techniques with step-by-step documentation |
+| **Injection** | 3 process injection techniques with step-by-step documentation |
 | **Unhook** | API unhooking via memory comparison and byte restoration |
 | **Detect** | Hook detection analysis — identify hooked APIs in target processes |
-| **Safety** | Built-in safety controls: `--dry-run` mode, `--target-pid` required, system process protection |
+| **Safety** | Built-in safety controls: `--dry-run` mode, `--pid` required, system process protection |
 
 ### Safety Framework
 
 Badang includes mandatory safety controls:
 - `--dry-run` mode enabled by default — simulates without executing
-- `--target-pid` required for any active operation
+- `--pid` required for analyze/inject commands
 - System processes (PID < 100) are protected and cannot be targeted
 - `--confirm` flag required to disable dry-run mode
 
@@ -74,6 +75,51 @@ Badang includes syscall numbers for the following NT APIs (Windows 10 22H2 x64 r
 | NtWaitForSingleObject | 0x66 | Wait for an object |
 
 > **WARNING:** Syscall numbers change between Windows versions. Never hardcode them in production tools. Badang includes them for research/reference only.
+
+---
+
+## Quickstart
+
+### Build and Run (5 minutes)
+
+```bash
+# Clone
+git clone https://github.com/aimansam/badang.git
+cd badang
+
+# Build release binary
+cargo build --release
+
+# Try it — all commands default to dry-run mode
+.\target\release\badang.exe analyze --pid 1234
+.\target\release\badang.exe syscall -s NtCreateThreadEx
+.\target/release/badang syscall -s NtAllocateVirtualMemory
+.\target/release/badang inject -p 4231 -t APC
+.\target/release/badang unhook -u NtCreateFile
+```
+
+### CI/CD
+
+This project includes a GitHub Actions workflow that:
+- Builds on **ubuntu-latest** and **windows-latest**
+- Runs `cargo fmt`, `cargo clippy`, `cargo test`
+- Verifies Windows cross-compile from Linux
+- Runs `cargo audit` for security vulnerability scanning
+- Uploads the Windows release binary as an artifact
+
+```bash
+# View CI status
+gh run list --repo aimansam/badang
+```
+
+### Cross-Platform Build
+
+```bash
+# Build Windows binary from Linux
+rustup target add x86_64-pc-windows-msvc
+cargo build --release --target x86_64-pc-windows-msvc
+# Output: target/x86_64-pc-windows-msvc/release/badang.exe
+```
 
 ---
 
@@ -151,7 +197,7 @@ badang.exe unhook --func NtCreateFile
 | `--confirm` | Disable dry-run and execute (required for real operations) |
 | `--pid <PID>` | Target process ID (required for analyze/inject) |
 | `--verbose` | Enable verbose output |
-| `--func <name>` | Target API/function name |
+| `--func <name>` | Target API/function name (alias for --syscall) |
 
 ### Example: Analyze a Process
 
@@ -187,13 +233,11 @@ This skips the hooked `ntdll.dll` entirely, going straight from user-mode to ker
 
 ### Process Injection
 
-Badang documents 5 injection techniques:
+Badang documents 3 injection techniques:
 
 1. **CreateRemoteThread** — Allocate + write memory in target, create remote thread
 2. **APC Injection** — Queue an APC to a target thread to execute injected code
-3. **PE Injection** — Manually map a PE image into another process
-4. **Thread Hijack** — Suspend a thread, modify its context to redirect execution
-5. **Process Hollowing** — Create a process in suspended state, replace its memory
+3. **Thread Hijack** — Suspend a thread, modify its context to redirect execution
 
 Each technique is demonstrated in dry-run mode with step-by-step documentation.
 
@@ -220,6 +264,9 @@ Detection analysis identifies which APIs have been hooked by:
 ```
 badang/
 ├── Cargo.toml          # Rust project configuration
+├── .github/
+│   └── workflows/
+│       └── ci.yml      # GitHub Actions CI/CD
 ├── src/
 │   ├── main.rs         # CLI entry point
 │   ├── cli.rs          # Command-line argument parsing
@@ -227,7 +274,8 @@ badang/
 │   ├── syscall.rs      # Direct syscall invocation module
 │   ├── injection.rs    # Process injection techniques
 │   ├── unhook.rs       # API unhooking module
-│   └── detect.rs       # Hook detection analysis
+│   ├── detect.rs       # Hook detection analysis
+│   └── tests.rs        # Integration tests
 ├── target/             # Build output (gitignored)
 └── README.md           # This file
 ```

@@ -25,7 +25,12 @@ pub enum HookType {
 
 impl fmt::Display for HookStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.api_name, if self.is_hooked { "HOOKED" } else { "clean" })
+        write!(
+            f,
+            "[{}] {}",
+            self.api_name,
+            if self.is_hooked { "HOOKED" } else { "clean" }
+        )
     }
 }
 
@@ -47,10 +52,10 @@ pub fn check_api(api_name: &str, address: usize, _num_bytes: usize) -> HookStatu
     // 2. Read clean ntdll.dll from disk
     // 3. Find the same function in the clean DLL
     // 4. Compare bytes
-    
+
     // For now, this is a simulation stub
     let is_hooked = false; // Placeholder — would be determined by actual comparison
-    
+
     HookStatus {
         api_name: api_name.to_string(),
         address,

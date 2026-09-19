@@ -2,7 +2,6 @@
 // Demonstrates process injection techniques for EDR evasion research
 // For authorized security research only.
 
-
 /// Injection technique types
 pub enum InjectionTechnique {
     CreateRemoteThread,
@@ -15,7 +14,9 @@ impl InjectionTechnique {
         match s.to_lowercase().as_str() {
             "createremote" | "createremotethread" => Some(Self::CreateRemoteThread),
             "apc" | "apcinjection" => Some(Self::APC),
-            "hijack" | "threadhijack" | "threadhijacking" | "setthreadcontext" => Some(Self::ThreadHijack),
+            "hijack" | "threadhijack" | "threadhijacking" | "setthreadcontext" => {
+                Some(Self::ThreadHijack)
+            }
             _ => None,
         }
     }
@@ -39,7 +40,7 @@ pub fn dry_run(pid: u32, technique: &str) {
     if let Some(t) = InjectionTechnique::from_str(technique) {
         eprintln!("  Target PID: {}", pid);
         eprintln!("  Technique: {}", t.name());
-        
+
         match t {
             InjectionTechnique::CreateRemoteThread => {
                 eprintln!("  Steps:");
