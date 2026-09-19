@@ -19,10 +19,25 @@ fn main() {
     // Print safety warning
     print_safety_warning();
 
-    // Validate target PID
-    if let Err(e) = validate_target(cli.target_pid) {
-        eprintln!("ERROR: {}", e);
-        process::exit(1);
+    // Validate target PID for process-targeting commands
+    if cli.command == "analyze" || cli.command == "inject" {
+        if let Err(e) = validate_target(cli.target_pid) {
+            eprintln!("ERROR: {}", e);
+            process::exit(1);
+        }
+        if cli.target_pid == 0 {
+            eprintln!("ERROR: --pid <PID> is required for {} command.", cli.command);
+            eprintln!("Use --dry-run (default) to simulate without executing.");
+            process::exit(1);
+        }
+    } else {
+        // For syscall/unhook, validate if PID provided
+        if cli.target_pid > 0 {
+            if let Err(e) = validate_target(cli.target_pid) {
+                eprintln!("ERROR: {}", e);
+                process::exit(1);
+            }
+        }
     }
 
     // Check execution mode
