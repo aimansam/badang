@@ -1,0 +1,30 @@
+[package]
+name = "badang"
+version = "0.1.0"
+edition = "2021"
+authors = ["Badang Project"]
+description = "EDR Evasion Research Toolkit — demonstrates and documents EDR bypass techniques for authorized security research"
+license = "MIT"
+repository = "https://github.com/aimansam/badang"
+keywords = ["edr", "evasion", "security", "research", "red-team"]
+categories = ["security", "command-line-tools"]
+
+[dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+    "Win32_System_Kernel",
+    "Win32_System_LibraryLoader",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_SystemInformation",
+] }
+
+[profile.release]
+opt-level = 3
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

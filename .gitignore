@@ -1,0 +1,19 @@
+# Badang — EDR Evasion Research Toolkit
+# For authorized security research and red team use only.
+
+# Build output
+target/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test outputs
+test_output/
