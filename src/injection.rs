@@ -3,6 +3,7 @@
 // For authorized security research only.
 
 /// Injection technique types
+#[derive(Debug, Clone, PartialEq)]
 pub enum InjectionTechnique {
     CreateRemoteThread,
     APC,

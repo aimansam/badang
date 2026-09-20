@@ -15,7 +15,7 @@ pub struct HookStatus {
     pub hooked_bytes: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HookType {
     JMP,
     PUSH_POP,

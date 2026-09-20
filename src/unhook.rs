@@ -3,6 +3,7 @@
 // For authorized security research only.
 
 /// Unhooking method types
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnhookMethod {
     DirectByte,
     Trampoline,
