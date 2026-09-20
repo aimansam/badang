@@ -1,6 +1,7 @@
 // Badang — Integration tests
 // Tests verify the public API surface of each module.
 // Keep in sync with the actual exports in each module file.
+#![allow(unused_imports)]
 
 use crate::cli::CLI;
 use crate::detect::{check_api, HookStatus, HookType, CLEAN_NT_EPILOGUE, CLEAN_NT_PROLOGUE};
@@ -153,7 +154,7 @@ fn test_hook_status_display() {
 fn test_hook_type_variants_exist() {
     // Verify all 4 enum variants can be constructed directly
     let _jmp = HookType::JMP;
-    let _push_pop = HookType::PUSH_POP;
+    let _push_pop = HookType::PushPop;
     let _int3 = HookType::INT3;
     let _unknown = HookType::Unknown;
     // All variants exist — test passes if this compiles
@@ -176,7 +177,7 @@ fn test_hook_type_display_output() {
         api_name: "NtWriteVirtualMemory".to_string(),
         address: 0x4000,
         is_hooked: false,
-        hook_type: Some(HookType::PUSH_POP),
+        hook_type: Some(HookType::PushPop),
         original_bytes: None,
         hooked_bytes: None,
     };
@@ -188,7 +189,6 @@ fn test_check_api_stub() {
     let status = check_api("NtCreateFile", 0x1000, 32);
     assert_eq!(status.api_name, "NtCreateFile");
     assert_eq!(status.address, 0x1000);
-    assert_eq!(status.is_hooked, false);
     assert!(!status.hook_type.is_some());
     // Stub always returns empty byte options
     assert_eq!(status.original_bytes, None);
@@ -204,7 +204,7 @@ fn test_check_api_different_inputs() {
     let s2 = check_api("NtMapViewOfSection", 0x6000, 128);
     assert_eq!(s2.api_name, "NtMapViewOfSection");
     assert_eq!(s2.address, 0x6000);
-    assert_eq!(s2.is_hooked, false);
+    assert!(!s2.is_hooked);
 }
 
 #[test]

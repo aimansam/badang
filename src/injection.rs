@@ -2,6 +2,7 @@
 // Demonstrates process injection techniques for EDR evasion research
 // For authorized security research only.
 
+#[allow(dead_code)]
 /// Injection technique types
 #[derive(Debug, Clone, PartialEq)]
 pub enum InjectionTechnique {

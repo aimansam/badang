@@ -2,6 +2,8 @@
 // For authorized security research and red team use only.
 // https://github.com/aimansam/badang
 
+#![allow(dead_code)]
+
 mod cli;
 mod detect;
 mod injection;

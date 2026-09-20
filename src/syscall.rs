@@ -2,6 +2,7 @@
 // Direct syscall invocation to bypass user-mode API hooks
 // For authorized security research only.
 
+#[allow(dead_code)]
 /// Known syscall numbers for common Windows versions (x64)
 /// WARNING: These numbers vary by Windows version and build.
 /// Never hardcode syscall numbers in production tools.
