@@ -246,6 +246,7 @@ fn draw_generate_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
     ui.add_space(4.0);
 
     match selected {
+        PayloadType::Nop => {}
         PayloadType::Exec => {
             ui.horizontal(|ui| {
                 ui.label("Command:");

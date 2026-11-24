@@ -189,7 +189,7 @@ impl CLI {
         // Type is required for generate command
         if cli.command == "generate" && cli.generate_type.is_empty() {
             eprintln!("ERROR: --type is required for generate command.");
-            eprintln!("Types: exec, messagebox, reverse_tcp, bind_tcp");
+            eprintln!("Types: nop, exec, messagebox, reverse_tcp, bind_tcp");
             process::exit(1);
         }
 
@@ -237,7 +237,7 @@ fn print_help() {
     println!("  -v, --verbose         Verbose output");
     println!();
     println!("GENERATE OPTIONS:");
-    println!("  --type <TYPE>         Payload type: exec, messagebox, reverse_tcp, bind_tcp");
+    println!("  --type <TYPE>         Payload type: nop, exec, messagebox, reverse_tcp, bind_tcp");
     println!("  --command <CMD>       Command to execute (exec type, default: calc.exe)");
     println!("  --title <TEXT>        MessageBox title (messagebox type)");
     println!("  --text <TEXT>         MessageBox body text (messagebox type)");

@@ -6,6 +6,7 @@ use crate::log::LogSink;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PayloadType {
+    Nop,
     Exec,
     MessageBox,
     ReverseTcp,
@@ -16,6 +17,7 @@ impl PayloadType {
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
+            "nop" | "test" => Some(Self::Nop),
             "exec" | "winexec" => Some(Self::Exec),
             "messagebox" | "msgbox" | "msg" => Some(Self::MessageBox),
             "reverse_tcp" | "reversetcp" | "reverse" | "rev" => Some(Self::ReverseTcp),
@@ -26,6 +28,7 @@ impl PayloadType {
 
     pub fn name(&self) -> &str {
         match self {
+            Self::Nop => "NOP Test (safe return)",
             Self::Exec => "Exec (WinExec)",
             Self::MessageBox => "MessageBox",
             Self::ReverseTcp => "Reverse TCP Shell",
@@ -35,6 +38,7 @@ impl PayloadType {
 
     pub fn description(&self) -> &str {
         match self {
+            Self::Nop => "Does nothing and returns — test that injection works without crashing",
             Self::Exec => "Run a command via WinExec (e.g. calc.exe)",
             Self::MessageBox => "Show a MessageBox popup (harmless PoC)",
             Self::ReverseTcp => "Reverse shell — connect back to IP:PORT, spawn cmd.exe",
@@ -44,6 +48,7 @@ impl PayloadType {
 
     pub fn all() -> &'static [PayloadType] {
         &[
+            Self::Nop,
             Self::Exec,
             Self::MessageBox,
             Self::ReverseTcp,
@@ -78,6 +83,7 @@ impl Default for PayloadConfig {
 pub fn generate(config: &PayloadConfig) -> Result<Vec<u8>, String> {
     validate_config(config)?;
     match config.payload_type {
+        PayloadType::Nop => Ok(generate_nop()),
         PayloadType::Exec => generate_exec(&config.command),
         PayloadType::MessageBox => generate_messagebox(&config.title, &config.text),
         PayloadType::ReverseTcp => generate_reverse_tcp(&config.lhost, config.lport),
@@ -87,6 +93,7 @@ pub fn generate(config: &PayloadConfig) -> Result<Vec<u8>, String> {
 
 fn validate_config(config: &PayloadConfig) -> Result<(), String> {
     match config.payload_type {
+        PayloadType::Nop => {}
         PayloadType::Exec => {
             if config.command.trim().is_empty() {
                 return Err("command is empty".to_string());
@@ -148,6 +155,17 @@ pub fn encode_port(port: u16) -> [u8; 2] {
 }
 
 const MAX_STRING_LEN: usize = 200;
+
+// ============================================================================
+// NOP test payload: just return 0 from the thread
+// xor eax,eax ; ret
+// ============================================================================
+fn generate_nop() -> Vec<u8> {
+    vec![
+        0x31, 0xC0, // xor eax, eax  (return 0)
+        0xC3,       // ret
+    ]
+}
 
 // ============================================================================
 // Template: Exec (WinExec)
