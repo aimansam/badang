@@ -206,6 +206,24 @@ fn main() {
                 }
             }
         }
+        "scan" => {
+            let processes = badang::process::scan(&log);
+            if !processes.is_empty() {
+                let list = if cli.scan_filter.is_empty() {
+                    processes
+                } else {
+                    let filtered = badang::process::filter(&processes, &cli.scan_filter);
+                    log.info(format!(
+                        "  Filter '{}': {} matches",
+                        cli.scan_filter,
+                        filtered.len()
+                    ));
+                    filtered
+                };
+                log.info("");
+                badang::process::print_table(&list, &log);
+            }
+        }
         "unhook" => {
             if cli.dry_run {
                 println!("[DRY RUN] Would unhook API: {}", cli.unhook_func);

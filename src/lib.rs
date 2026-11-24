@@ -11,6 +11,7 @@ pub mod generate;
 pub mod gui;
 pub mod injection;
 pub mod log;
+pub mod process;
 pub mod payload;
 pub mod safety;
 pub mod syscall;

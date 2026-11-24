@@ -1,11 +1,12 @@
 use eframe::egui;
 
-use crate::gui::panels::{analyze, inject, load, log_panel, syscall, unhook};
+use crate::gui::panels::{analyze, inject, load, log_panel, scan, syscall, unhook};
 use crate::gui::theme;
 use crate::log::{LogEntry, LogSink};
 
 #[derive(PartialEq)]
 enum Tab {
+    Scan,
     Analyze,
     Syscall,
     Inject,
@@ -25,6 +26,7 @@ pub struct BadangApp {
     syscall_state: syscall::SyscallState,
     inject_state: inject::InjectState,
     load_state: load::LoadState,
+    scan_state: scan::ScanState,
     unhook_state: unhook::UnhookState,
 
     theme_applied: bool,
@@ -33,7 +35,7 @@ pub struct BadangApp {
 impl BadangApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         Self {
-            active_tab: Tab::Analyze,
+            active_tab: Tab::Scan,
             dry_run: true,
             confirm: false,
 
@@ -44,6 +46,7 @@ impl BadangApp {
             syscall_state: syscall::SyscallState::default(),
             inject_state: inject::InjectState::default(),
             load_state: load::LoadState::default(),
+            scan_state: scan::ScanState::default(),
             unhook_state: unhook::UnhookState::default(),
 
             theme_applied: false,
@@ -71,6 +74,7 @@ impl eframe::App for BadangApp {
         // Tab bar
         egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.active_tab, Tab::Scan, "Scan");
                 ui.selectable_value(&mut self.active_tab, Tab::Analyze, "Analyze");
                 ui.selectable_value(&mut self.active_tab, Tab::Syscall, "Syscall");
                 ui.selectable_value(&mut self.active_tab, Tab::Inject, "Inject");
@@ -110,6 +114,9 @@ impl eframe::App for BadangApp {
 
         // Central content panel
         egui::CentralPanel::default().show(ctx, |ui| match self.active_tab {
+            Tab::Scan => {
+                scan::draw(ui, &mut self.scan_state, &self.log_sink);
+            }
             Tab::Analyze => {
                 analyze::draw(ui, &mut self.analyze_state, &mut self.dry_run, &self.log_sink);
             }

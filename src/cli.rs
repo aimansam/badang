@@ -23,6 +23,7 @@ pub struct CLI {
     pub generate_text: String,
     pub generate_lhost: String,
     pub generate_lport: u16,
+    pub scan_filter: String,
 }
 
 impl CLI {
@@ -48,6 +49,7 @@ impl CLI {
             generate_text: String::from("Hello from Badang"),
             generate_lhost: String::from("127.0.0.1"),
             generate_lport: 4444,
+            scan_filter: String::new(),
         };
 
         let mut i = 1;
@@ -118,7 +120,14 @@ impl CLI {
                 "load" => cli.command = String::from("load"),
                 "convert" => cli.command = String::from("convert"),
                 "generate" => cli.command = String::from("generate"),
+                "scan" => cli.command = String::from("scan"),
                 "unhook" => cli.command = String::from("unhook"),
+                "--filter" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.scan_filter = args[i].clone();
+                    }
+                }
                 "--type" => {
                     i += 1;
                     if i < args.len() {
@@ -206,6 +215,7 @@ fn print_help() {
     println!("  load       Load and verify a shellcode payload file (no execution)");
     println!("  convert    Convert shellcode between formats (hex/C/Python/Rust/decimal)");
     println!("  generate   Generate shellcode payload (built-in, no msfvenom needed)");
+    println!("  scan       List running processes (pick a target PID)");
     println!("  unhook     API unhooking (restore original function bytes)");
     println!();
     println!("OPTIONS:");
@@ -223,6 +233,7 @@ fn print_help() {
     println!("  -n, --dry-run         Simulate without executing (default)");
     println!("  -x, --execute         Actually perform the operation");
     println!("  -c, --confirm         Confirm before executing");
+    println!("      --filter <NAME>   Filter processes by name (scan command)");
     println!("  -v, --verbose         Verbose output");
     println!();
     println!("GENERATE OPTIONS:");

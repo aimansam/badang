@@ -39,6 +39,7 @@ fn test_cli_struct() {
         generate_text: "Hello from Badang".to_string(),
         generate_lhost: "127.0.0.1".to_string(),
         generate_lport: 4444,
+        scan_filter: String::new(),
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);
