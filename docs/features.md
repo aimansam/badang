@@ -1,0 +1,44 @@
+# Features
+
+## Analyze (Hook Detection)
+
+Scans a target process for hooked APIs. Opens the process, reads the first 32 bytes of each NT function from `ntdll.dll`, compares against the clean prologue (`4C 8B D1 B8`).
+
+**13 APIs scanned:** NtAllocateVirtualMemory, NtProtectVirtualMemory, NtWriteVirtualMemory, NtCreateThreadEx, NtMapViewOfSection, NtQueueApcThread, NtCreateFile, NtOpenFile, NtReadFile, NtWriteFile, NtClose, NtWaitForSingleObject, NtDeviceIoControlFile.
+
+Reports each as `[CLEAN]` or `[HOOKED]` with hook type and raw bytes.
+
+## Syscall (Direct Syscall)
+
+Calls the kernel directly using raw syscall numbers, bypassing ntdll hooks entirely. Includes SSN tables for Windows 7 SP1, 10 1809, 10 22H2, and 11 22H2.
+
+## Inject (Process Injection)
+
+Three techniques:
+
+- **CreateRemoteThread** — allocate + write + create thread. Simplest, most detected.
+- **APC Injection** — queue code to an alertable thread. Less obvious.
+- **Thread Hijack** — suspend thread, change instruction pointer, resume. No new thread created.
+
+## Unhook (API Restoration)
+
+Restores hooked functions to original bytes. Three methods:
+
+- **Direct Byte Restoration** — overwrite with clean prologue
+- **Trampoline** — patch around the hook
+- **Inline Hook** — redirect execution flow
+
+## Generate (Payload Generator)
+
+Builds x86_64 Windows shellcode without msfvenom. Uses PEB walking (`gs:[0x60]` → PEB → kernel32) and ROR13 API hashing.
+
+| Type | What it does | Parameters |
+|------|-------------|------------|
+| exec | Run command via WinExec | `--command "calc.exe"` |
+| messagebox | Show MessageBox | `--title "Test" --text "Hello"` |
+| reverse_tcp | Connect-back shell | `--lhost IP --lport PORT` |
+| bind_tcp | Listen shell | `--lport PORT` |
+
+## Convert (Format Converter)
+
+Auto-detects and converts between: hex, C array, Python bytes, Rust array, decimal.

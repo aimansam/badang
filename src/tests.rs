@@ -4,8 +4,11 @@
 #![allow(unused_imports)]
 
 use crate::cli::CLI;
-use crate::detect::{check_api, HookStatus, HookType, CLEAN_NT_EPILOGUE, CLEAN_NT_PROLOGUE};
+use crate::detect::{
+    check_api, classify_hook, HookStatus, HookType, CLEAN_NT_EPILOGUE, CLEAN_NT_PROLOGUE,
+};
 use crate::injection::InjectionTechnique;
+use crate::log::LogSink;
 use crate::syscall::{
     get_syscall_number, SyscallTable, SYS_NT_ALLOCATE_VIRTUAL_MEMORY, SYS_NT_CLOSE,
     SYS_NT_CREATE_FILE, SYS_NT_CREATE_THREAD_EX, SYS_NT_DEVICE_IO_CONTROL_FILE,
@@ -24,8 +27,18 @@ fn test_cli_struct() {
         confirm: false,
         target_pid: 1234,
         inject_technique: "createremote".to_string(),
+        payload: "payload.bin".to_string(),
         syscall_func: "NtCreateThreadEx".to_string(),
         unhook_func: "NtCreateFile".to_string(),
+        convert_input: String::new(),
+        convert_output: "payload.bin".to_string(),
+        convert_format: "auto".to_string(),
+        generate_type: String::new(),
+        generate_command: "calc.exe".to_string(),
+        generate_title: "Badang".to_string(),
+        generate_text: "Hello from Badang".to_string(),
+        generate_lhost: "127.0.0.1".to_string(),
+        generate_lport: 4444,
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);
@@ -208,6 +221,57 @@ fn test_check_api_different_inputs() {
 }
 
 #[test]
+fn test_classify_hook_jmp_rel32() {
+    let bytes = [0xE9, 0x12, 0x34, 0x56, 0x78];
+    assert_eq!(classify_hook(&bytes), Some(HookType::JMP));
+}
+
+#[test]
+fn test_classify_hook_jmp_indirect() {
+    let bytes = [0xFF, 0x25, 0x00, 0x00, 0x00, 0x00];
+    assert_eq!(classify_hook(&bytes), Some(HookType::JMP));
+}
+
+#[test]
+fn test_classify_hook_int3() {
+    let bytes = [0xCC, 0x90, 0x90, 0x90];
+    assert_eq!(classify_hook(&bytes), Some(HookType::INT3));
+}
+
+#[test]
+fn test_classify_hook_push_ret() {
+    let bytes = [0x68, 0x78, 0x56, 0x34, 0x12, 0xC3];
+    assert_eq!(classify_hook(&bytes), Some(HookType::PushPop));
+}
+
+#[test]
+fn test_classify_hook_clean_prologue() {
+    // Clean NT API: mov r10, rcx; mov eax, <ssn>
+    let bytes = [0x4C, 0x8B, 0xD1, 0xB8, 0x55, 0x00, 0x00, 0x00];
+    assert_eq!(classify_hook(&bytes), None);
+}
+
+#[test]
+fn test_classify_hook_unknown_modification() {
+    // Not a known hook pattern, but doesn't match clean prologue
+    let bytes = [0x48, 0x89, 0x5C, 0x24, 0x08];
+    assert_eq!(classify_hook(&bytes), Some(HookType::Unknown));
+}
+
+#[test]
+fn test_classify_hook_empty() {
+    assert_eq!(classify_hook(&[]), None);
+}
+
+#[test]
+fn test_hook_type_display() {
+    assert!(format!("{}", HookType::JMP).contains("JMP"));
+    assert!(format!("{}", HookType::PushPop).contains("PUSH"));
+    assert!(format!("{}", HookType::INT3).contains("INT3"));
+    assert!(format!("{}", HookType::Unknown).contains("Unknown"));
+}
+
+#[test]
 fn test_clean_prologue_constants() {
     // Verify the known-clean prologue/epilogue byte patterns
     assert_eq!(CLEAN_NT_PROLOGUE, [0x4C, 0x8B, 0xD1, 0xB8]);
@@ -280,4 +344,97 @@ fn test_all_modules_have_dry_run() {
     let _ = UnhookMethod::from_str("direct");
     let _ = get_syscall_number("NtCreateFile");
     let _ = check_api("NtOpenFile", 0x1000, 32);
+}
+
+// === Live injection (payload chain) ===
+
+#[test]
+fn test_load_payload_roundtrip() {
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("badang_test_payload_{}.bin", std::process::id()));
+    let bytes: Vec<u8> = vec![0x90, 0x31, 0xC0, 0xC3];
+    std::fs::write(&path, &bytes).expect("failed to write test payload");
+    let loaded = crate::injection::load_payload(path.to_str().expect("path is valid utf-8"));
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(loaded.expect("load_payload should succeed"), bytes);
+}
+
+#[test]
+fn test_load_payload_missing_file() {
+    let err = crate::injection::load_payload("/nonexistent/badang/definitely-missing.bin")
+        .expect_err("missing file must be an error");
+    assert!(
+        err.contains("failed to read payload file"),
+        "unexpected error: {}",
+        err
+    );
+}
+
+#[test]
+fn test_live_inject_requires_pid() {
+    let log = LogSink::new();
+    let err = crate::injection::live_inject(
+        0,
+        &InjectionTechnique::CreateRemoteThread,
+        &[0x90, 0x90],
+        &log,
+    )
+    .expect_err("pid 0 must be rejected");
+    assert!(err.contains("PID"), "unexpected error: {}", err);
+}
+
+#[test]
+fn test_live_inject_rejects_empty_shellcode() {
+    let log = LogSink::new();
+    let err =
+        crate::injection::live_inject(1234, &InjectionTechnique::CreateRemoteThread, &[], &log)
+            .expect_err("empty shellcode must be rejected");
+    assert!(
+        err.contains("shellcode is empty"),
+        "unexpected error: {}",
+        err
+    );
+}
+
+#[test]
+fn test_live_inject_only_crt_implemented() {
+    let log = LogSink::new();
+    let err = crate::injection::live_inject(1234, &InjectionTechnique::APC, &[0x90, 0x90], &log)
+        .expect_err("non-CRT techniques are not implemented");
+    assert!(
+        err.contains("only implemented"),
+        "unexpected error: {}",
+        err
+    );
+}
+
+/// Manual end-to-end verification — ONLY on an authorized Windows VM:
+///   cargo test test_live_crt_chain_manual -- --ignored
+/// Requires:
+///   BADANG_TEST_PID     PID of a sacrificial process you own
+///   BADANG_TEST_PAYLOAD path to a shellcode file you control
+/// Ignored by default so CI and `cargo test` never touch a live process.
+#[test]
+#[ignore]
+fn test_live_crt_chain_manual() {
+    let pid = std::env::var("BADANG_TEST_PID")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0);
+    let payload_path = std::env::var("BADANG_TEST_PAYLOAD").unwrap_or_default();
+    if pid == 0 || payload_path.is_empty() {
+        eprintln!(
+            "skipping: set BADANG_TEST_PID and BADANG_TEST_PAYLOAD on an authorized Windows VM"
+        );
+        return;
+    }
+    let log = LogSink::new();
+    let shellcode = crate::injection::load_payload(&payload_path).expect("payload load failed");
+    crate::injection::live_inject(
+        pid,
+        &InjectionTechnique::CreateRemoteThread,
+        &shellcode,
+        &log,
+    )
+    .expect("live CRT chain should complete");
 }

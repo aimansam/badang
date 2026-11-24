@@ -1,6 +1,6 @@
 [package]
 name = "badang"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Badang Project"]
 description = "EDR Evasion Research Toolkit — demonstrates and documents EDR bypass techniques for authorized security research"
@@ -9,9 +9,28 @@ repository = "https://github.com/aimansam/badang"
 keywords = ["edr", "evasion", "security", "research", "red-team"]
 categories = ["security", "command-line-tools"]
 
+[lib]
+name = "badang"
+path = "src/lib.rs"
+
+[[bin]]
+name = "badang"
+path = "src/bin/gui.rs"
+required-features = ["gui"]
+
+[[bin]]
+name = "badang-cli"
+path = "src/bin/cli.rs"
+
+[features]
+default = []
+gui = ["dep:eframe", "dep:rfd"]
+
 [dependencies]
 windows = { version = "0.58", features = [
     "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_Memory",
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
@@ -21,6 +40,12 @@ windows = { version = "0.58", features = [
     "Win32_System_IO",
     "Win32_System_SystemInformation",
 ] }
+
+eframe = { version = "0.31", optional = true, default-features = false, features = [
+    "default_fonts",
+    "glow",
+] }
+rfd = { version = "0.15", optional = true }
 
 [profile.release]
 opt-level = 3

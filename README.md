@@ -39,10 +39,27 @@ Each technique includes detailed documentation of how it works, why it can bypas
 | Module | Description |
 |--------|-------------|
 | **Syscall** | Direct syscall invocation with Windows syscall number reference table (13 NT APIs) |
-| **Injection** | 3 process injection techniques with step-by-step documentation |
+| **Injection** | 3 process injection techniques; **live CreateRemoteThread injection** + step-by-step documentation for all |
 | **Unhook** | API unhooking via memory comparison and byte restoration |
 | **Detect** | Hook detection analysis — identify hooked APIs in target processes |
-| **Safety** | Built-in safety controls: `--dry-run` mode, `--pid` required, system process protection |
+| **Safety** | Built-in safety controls: `--dry-run` mode, `--pid` required, system process protection, payload verification |
+
+## Payload Formats
+
+Badang accepts raw shellcode payloads from standard generators:
+
+```bash
+# Example: generate a payload (authorized testing only)
+msfvenom -p windows/x64/exec CMD=calc.exe -f raw -o shellcode.bin
+```
+
+Before injecting, use the `load` command to verify the payload file is accessible:
+
+```bash
+badang-cli.exe load --payload shellcode.bin
+```
+
+This will show the payload size and first bytes, confirming the file can be read before attempting any injection operation.
 
 ### Safety Framework
 
@@ -51,6 +68,7 @@ Badang includes mandatory safety controls:
 - `--pid` required for analyze/inject commands
 - System processes (PID < 100) are protected and cannot be targeted
 - `--confirm` flag required to disable dry-run mode
+- Live injection requires both `--execute` AND `--confirm`
 
 ---
 
@@ -87,25 +105,30 @@ Badang includes syscall numbers for the following NT APIs (Windows 10 22H2 x64 r
 git clone https://github.com/aimansam/badang.git
 cd badang
 
-# Build release binary
-cargo build --release
+# Build the GUI (requires --features gui)
+cargo build --release --bin badang --features gui
 
-# Try it — all commands default to dry-run mode
-.\target\release\badang.exe analyze --pid 1234
-.\target\release\badang.exe syscall -s NtCreateThreadEx
-.\target/release/badang syscall -s NtAllocateVirtualMemory
-.\target/release/badang inject -p 4231 -t APC
-.\target/release/badang unhook -u NtCreateFile
+# Build the CLI
+cargo build --release --bin badang-cli
+
+# Launch the GUI
+.\target\release\badang.exe
+
+# Or use the CLI — all commands default to dry-run mode
+.\target\release\badang-cli.exe analyze --pid 1234
+.\target\release\badang-cli.exe syscall -s NtCreateThreadEx
+.\target\release\badang-cli.exe inject -p 4231 -t APC
+.\target\release\badang-cli.exe unhook -u NtCreateFile
 ```
 
 ### CI/CD
 
 This project includes a GitHub Actions workflow that:
-- Builds on **ubuntu-latest** and **windows-latest**
-- Runs `cargo fmt`, `cargo clippy`, `cargo test`
-- Verifies Windows cross-compile from Linux
+- Builds both **GUI** and **CLI** binaries on **ubuntu-latest** and **windows-latest**
+- Runs `cargo fmt`, `cargo clippy` (with and without `gui` feature), `cargo test`
+- Verifies Windows cross-compile from Linux (both CLI and GUI)
 - Runs `cargo audit` for security vulnerability scanning
-- Uploads the Windows release binary as an artifact
+- Uploads both Windows release binaries as artifacts
 
 ```bash
 # View CI status
@@ -138,11 +161,13 @@ cargo build --release --target x86_64-pc-windows-msvc
 git clone https://github.com/aimansam/badang.git
 cd badang
 
-# Build
-cargo build --release
+# Build both binaries
+cargo build --release --bin badang-cli
+cargo build --release --bin badang --features gui
 
-# Binary location
-.\target\release\badang.exe
+# Binary locations
+.\target\release\badang.exe       # GUI
+.\target\release\badang-cli.exe   # CLI
 ```
 
 ### Cross-Compilation
@@ -161,23 +186,41 @@ cargo build --release --target x86_64-pc-windows-msvc
 
 ## Usage
 
+### GUI (Desktop Application)
+
+Launch `badang.exe` (built with `--features gui`) for the native desktop interface:
+
+- **Tab bar**: Switch between Analyze, Syscall, Inject, Load, and Unhook panels
+- **Dry Run toggle**: ON by default (green indicator in the top bar). Click to toggle.
+- **Confirm checkbox**: Required alongside Dry Run OFF for live operations
+- **Log panel**: Scrollable output at the bottom — color-coded by severity
+- **File browser**: Native file dialog for selecting payload files
+
+The GUI provides the same safety controls as the CLI: dry-run by default, PID validation, system process protection, and confirmation requirements.
+
 ### Command Line Interface
 
 ```bash
 # Show help
-badang.exe --help
+badang-cli.exe --help
 
 # Analyze a process for hooked APIs (DRY RUN by default)
-badang.exe analyze --pid 1234
+badang-cli.exe analyze --pid 1234
 
 # Direct syscall invocation (DRY RUN)
-badang.exe syscall --func NtCreateThreadEx
+badang-cli.exe syscall --func NtCreateThreadEx
 
 # Process injection technique demonstration (DRY RUN)
-badang.exe inject --pid 1234 --technique CreateRemote
+badang-cli.exe inject --pid 1234 --technique CreateRemote
+
+# Load a shellcode payload file (no execution)
+badang-cli.exe load --payload shellcode.bin
+
+# LIVE injection (requires --execute --confirm)
+badang-cli.exe inject --pid 1234 --technique CreateRemote --payload shellcode.bin --execute --confirm
 
 # API unhooking demonstration (DRY RUN)
-badang.exe unhook --func NtCreateFile
+badang-cli.exe unhook --func NtCreateFile
 ```
 
 ### Commands
@@ -196,6 +239,7 @@ badang.exe unhook --func NtCreateFile
 | `--dry-run` | Simulate without executing (default: true) |
 | `--confirm` | Disable dry-run and execute (required for real operations) |
 | `--pid <PID>` | Target process ID (required for analyze/inject) |
+| `--payload <PATH>` | Shellcode payload file path (required for load, optional for inject) |
 | `--verbose` | Enable verbose output |
 | `--func <name>` | Target API/function name (alias for --syscall) |
 
@@ -203,10 +247,10 @@ badang.exe unhook --func NtCreateFile
 
 ```bash
 # Dry-run analysis (default)
-badang.exe analyze --pid 4231
+badang-cli.exe analyze --pid 4231
 
 # With confirmation to actually execute
-badang.exe analyze --pid 4231 --confirm
+badang-cli.exe analyze --pid 4231 --confirm
 ```
 
 ---
@@ -263,21 +307,36 @@ Detection analysis identifies which APIs have been hooked by:
 
 ```
 badang/
-├── Cargo.toml          # Rust project configuration
+├── Cargo.toml              # Rust project configuration
 ├── .github/
 │   └── workflows/
-│       └── ci.yml      # GitHub Actions CI/CD
+│       └── ci.yml          # GitHub Actions CI/CD
 ├── src/
-│   ├── main.rs         # CLI entry point
-│   ├── cli.rs          # Command-line argument parsing
-│   ├── safety.rs       # Safety controls and validation
-│   ├── syscall.rs      # Direct syscall invocation module
-│   ├── injection.rs    # Process injection techniques
-│   ├── unhook.rs       # API unhooking module
-│   ├── detect.rs       # Hook detection analysis
-│   └── tests.rs        # Integration tests
-├── target/             # Build output (gitignored)
-└── README.md           # This file
+│   ├── lib.rs              # Library crate root (shared modules)
+│   ├── log.rs              # Shared logging sink (CLI + GUI)
+│   ├── cli.rs              # Command-line argument parsing
+│   ├── safety.rs           # Safety controls and validation
+│   ├── syscall.rs          # Direct syscall invocation module
+│   ├── injection.rs        # Process injection techniques
+│   ├── unhook.rs           # API unhooking module
+│   ├── detect.rs           # Hook detection analysis
+│   ├── tests.rs            # Integration tests
+│   ├── bin/
+│   │   ├── cli.rs          # CLI binary entry point (badang-cli)
+│   │   └── gui.rs          # GUI binary entry point (badang)
+│   └── gui/
+│       ├── mod.rs          # GUI module root
+│       ├── app.rs          # egui application struct
+│       ├── theme.rs        # Dark hacker theme
+│       └── panels/         # One panel per command
+│           ├── analyze.rs
+│           ├── syscall.rs
+│           ├── inject.rs
+│           ├── load.rs
+│           ├── unhook.rs
+│           └── log_panel.rs
+├── target/                 # Build output (gitignored)
+└── README.md               # This file
 ```
 
 ---

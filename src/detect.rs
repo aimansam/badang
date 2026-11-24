@@ -5,7 +5,8 @@
 #[allow(dead_code)]
 use std::fmt;
 
-/// Hook status for an API
+use crate::log::LogSink;
+
 #[derive(Debug, Clone)]
 pub struct HookStatus {
     pub api_name: String,
@@ -18,10 +19,22 @@ pub struct HookStatus {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HookType {
+    #[allow(clippy::upper_case_acronyms)]
     JMP,
     PushPop,
     INT3,
     Unknown,
+}
+
+impl fmt::Display for HookType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HookType::JMP => write!(f, "JMP hook (0xE9/0xFF)"),
+            HookType::PushPop => write!(f, "PUSH/RET detour"),
+            HookType::INT3 => write!(f, "INT3 breakpoint (0xCC)"),
+            HookType::Unknown => write!(f, "Unknown modification"),
+        }
+    }
 }
 
 impl fmt::Display for HookStatus {
@@ -35,11 +48,57 @@ impl fmt::Display for HookStatus {
     }
 }
 
-/// Known clean prologue patterns for common NT APIs (x64)
+// Clean NT API prologue: mov r10, rcx; mov eax, <ssn>
 pub const CLEAN_NT_PROLOGUE: [u8; 4] = [0x4C, 0x8B, 0xD1, 0xB8];
 pub const CLEAN_NT_EPILOGUE: [u8; 4] = [0x48, 0x83, 0xE4, 0xF0];
 
-/// Check if an API is hooked by comparing bytes at its address
+const NUM_BYTES_TO_READ: usize = 32;
+
+const TARGET_APIS: &[&str] = &[
+    "NtAllocateVirtualMemory",
+    "NtProtectVirtualMemory",
+    "NtWriteVirtualMemory",
+    "NtCreateThreadEx",
+    "NtMapViewOfSection",
+    "NtQueueApcThread",
+    "NtCreateFile",
+    "NtOpenFile",
+    "NtReadFile",
+    "NtWriteFile",
+    "NtClose",
+    "NtWaitForSingleObject",
+    "NtDeviceIoControlFile",
+];
+
+pub fn classify_hook(bytes: &[u8]) -> Option<HookType> {
+    if bytes.is_empty() {
+        return None;
+    }
+    // JMP rel32
+    if bytes[0] == 0xE9 {
+        return Some(HookType::JMP);
+    }
+    // JMP [rip+disp32] (FF 25) or JMP reg (FF Ex)
+    if bytes.len() >= 2 && bytes[0] == 0xFF && (bytes[1] == 0x25 || (bytes[1] & 0xF0) == 0xE0) {
+        return Some(HookType::JMP);
+    }
+    // INT3 breakpoint
+    if bytes[0] == 0xCC {
+        return Some(HookType::INT3);
+    }
+    // PUSH addr + RET detour (0x68 ... C3) or MOV [rsp], addr + RET
+    if bytes.len() >= 6 && bytes[0] == 0x68 {
+        if bytes[5] == 0xC3 {
+            return Some(HookType::PushPop);
+        }
+    }
+    // Check if first 4 bytes match clean NT prologue
+    if bytes.len() >= 4 && bytes[..4] != CLEAN_NT_PROLOGUE {
+        return Some(HookType::Unknown);
+    }
+    None
+}
+
 pub fn check_api(api_name: &str, address: usize, _num_bytes: usize) -> HookStatus {
     let is_hooked = false;
     HookStatus {
@@ -52,35 +111,176 @@ pub fn check_api(api_name: &str, address: usize, _num_bytes: usize) -> HookStatu
     }
 }
 
-pub fn analyze(pid: u32) {
-    dry_run(pid);
-}
-pub fn dry_run(pid: u32) {
-    eprintln!("  Target PID: {}", pid);
-    eprintln!("  Technique: Hook Detection Analysis");
-    eprintln!();
-    eprintln!("  What it does:");
-    eprintln!("    1. Get the address of target APIs via GetProcAddress");
-    eprintln!("    2. Read the first N bytes of each function");
-    eprintln!("    3. Compare with known clean prologue patterns");
-    eprintln!("    4. Report which APIs are hooked and how");
-    eprintln!();
-    eprintln!("  Detection:");
-    eprintln!("    - Clean NT API prologue: mov r10, rcx; mov eax, syscall; syscall");
-    eprintln!("    - Hooked functions may have: JMP, PUSH/POP, INT 3");
-    eprintln!("    - Some EDRs use more sophisticated hooks (multiple jumps)");
-    eprintln!("    - Some EDRs detect when their hooks are being enumerated");
-    eprintln!("    - This technique is used by BOTH attackers and defenders");
-    eprintln!();
+// ----- Windows live analysis -----
+#[cfg(windows)]
+pub fn analyze(pid: u32, log: &LogSink) {
+    use std::ffi::CString;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn CloseHandle(h: *mut std::ffi::c_void) -> i32;
+        fn ReadProcessMemory(
+            process: *mut std::ffi::c_void,
+            base: *const std::ffi::c_void,
+            buffer: *mut u8,
+            size: usize,
+            read: *mut usize,
+        ) -> i32;
+        fn GetModuleHandleA(name: *const u8) -> *mut std::ffi::c_void;
+        fn GetProcAddress(
+            module: *mut std::ffi::c_void,
+            name: *const u8,
+        ) -> *mut std::ffi::c_void;
+        fn GetLastError() -> u32;
+    }
+
+    const PROCESS_VM_READ: u32 = 0x0010;
+    const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
+
+    log.step(format!("[ANALYZE] Scanning process PID {} for API hooks", pid));
+    log.info("");
+
+    let handle = unsafe { OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        let err = unsafe { GetLastError() };
+        log.error(format!(
+            "  Failed to open process {} (error {}). Check permissions.",
+            pid, err
+        ));
+        if err == 5 {
+            log.detail("  Access denied — try running as Administrator");
+        }
+        return;
+    }
+
+    let ntdll_name = CString::new("ntdll.dll").unwrap();
+    let ntdll = unsafe { GetModuleHandleA(ntdll_name.as_ptr() as *const u8) };
+    if ntdll.is_null() {
+        log.error("  Failed to get ntdll.dll handle");
+        unsafe { CloseHandle(handle) };
+        return;
+    }
+
+    let mut hooked_count = 0u32;
+    let mut clean_count = 0u32;
+    let mut failed_count = 0u32;
+
+    for api_name in TARGET_APIS {
+        let c_name = match CString::new(*api_name) {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+        let func_addr = unsafe { GetProcAddress(ntdll, c_name.as_ptr() as *const u8) };
+        if func_addr.is_null() {
+            log.detail(format!("  [SKIP] {} — not found in ntdll", api_name));
+            failed_count += 1;
+            continue;
+        }
+
+        let mut buf = [0u8; NUM_BYTES_TO_READ];
+        let mut bytes_read: usize = 0;
+        let ok = unsafe {
+            ReadProcessMemory(
+                handle,
+                func_addr as *const std::ffi::c_void,
+                buf.as_mut_ptr(),
+                NUM_BYTES_TO_READ,
+                &mut bytes_read,
+            )
+        };
+
+        if ok == 0 || bytes_read < 4 {
+            let err = unsafe { GetLastError() };
+            log.detail(format!(
+                "  [SKIP] {} @ {:p} — read failed (error {})",
+                api_name, func_addr, err
+            ));
+            failed_count += 1;
+            continue;
+        }
+
+        let read_bytes = &buf[..bytes_read];
+        let hook = classify_hook(read_bytes);
+
+        let hex_str: String = read_bytes
+            .iter()
+            .take(16)
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        match hook {
+            Some(hook_type) => {
+                hooked_count += 1;
+                log.warning(format!(
+                    "  [HOOKED] {} @ {:p} — {}",
+                    api_name, func_addr, hook_type
+                ));
+                log.detail(format!("           Bytes: {}", hex_str));
+            }
+            None => {
+                clean_count += 1;
+                log.info(format!("  [CLEAN]  {} @ {:p}", api_name, func_addr));
+                log.detail(format!("           Bytes: {}", hex_str));
+            }
+        }
+    }
+
+    unsafe { CloseHandle(handle) };
+
+    log.info("");
+    log.step("  === Summary ===");
+    log.info(format!("  Scanned: {} APIs", TARGET_APIS.len()));
+    if hooked_count > 0 {
+        log.warning(format!("  Hooked:  {}", hooked_count));
+    } else {
+        log.info(format!("  Hooked:  {}", hooked_count));
+    }
+    log.info(format!("  Clean:   {}", clean_count));
+    if failed_count > 0 {
+        log.detail(format!("  Skipped: {}", failed_count));
+    }
+    log.info("");
 }
 
-pub fn print_info() {
-    eprintln!();
-    eprintln!("=== Hook Detection Analysis ===");
-    eprintln!("  Analyzes a target process to determine which Windows APIs");
-    eprintln!("  have been hooked by security software (EDR, AV, etc.).");
-    eprintln!("  Hook detection is a legitimate security research technique.");
-    eprintln!("  EDR developers use it to verify their hooks work correctly.");
-    eprintln!("  Red teams use it to understand what they're up against.");
-    eprintln!();
+// ----- Non-Windows stub -----
+#[cfg(not(windows))]
+pub fn analyze(pid: u32, log: &LogSink) {
+    log.step(format!("[ANALYZE] Target PID: {}", pid));
+    log.error("  Live hook analysis requires Windows (GetProcAddress + ReadProcessMemory).");
+    log.info("  This binary was not compiled on Windows — only dry-run mode is available.");
+    log.info("  Build on Windows with: cargo build --release");
+    log.info("  Or cross-compile: cargo build --release --target x86_64-pc-windows-gnu");
+    log.info("");
+}
+
+pub fn dry_run(pid: u32, log: &LogSink) {
+    log.info(format!("  Target PID: {}", pid));
+    log.info("  Technique: Hook Detection Analysis");
+    log.info("");
+    log.detail("  What it does:");
+    log.detail("    1. Get the address of target APIs via GetProcAddress");
+    log.detail("    2. Read the first N bytes of each function");
+    log.detail("    3. Compare with known clean prologue patterns");
+    log.detail("    4. Report which APIs are hooked and how");
+    log.info("");
+    log.info("  Detection:");
+    log.detail("    - Clean NT API prologue: mov r10, rcx; mov eax, syscall; syscall");
+    log.detail("    - Hooked functions may have: JMP, PUSH/POP, INT 3");
+    log.detail("    - Some EDRs use more sophisticated hooks (multiple jumps)");
+    log.detail("    - Some EDRs detect when their hooks are being enumerated");
+    log.detail("    - This technique is used by BOTH attackers and defenders");
+    log.info("");
+}
+
+pub fn print_info(log: &LogSink) {
+    log.info("");
+    log.info("=== Hook Detection Analysis ===");
+    log.detail("  Analyzes a target process to determine which Windows APIs");
+    log.detail("  have been hooked by security software (EDR, AV, etc.).");
+    log.detail("  Hook detection is a legitimate security research technique.");
+    log.detail("  EDR developers use it to verify their hooks work correctly.");
+    log.detail("  Red teams use it to understand what they're up against.");
+    log.info("");
 }
