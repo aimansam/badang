@@ -396,10 +396,24 @@ mod imp {
             free_remote(process, base, log);
             return Err("remote thread is still active after an INFINITE wait".to_string());
         }
-        log.info(format!(
-            "      remote thread exited with code {}",
-            exit_code
-        ));
+        if exit_code == 0xC0000005 {
+            log.error(format!(
+                "      remote thread CRASHED — exit code 0x{:X} (ACCESS_VIOLATION)",
+                exit_code
+            ));
+            log.error("      the shellcode hit an invalid memory access");
+            log.error("      the injection pipeline is OK (NOP payload works) — the payload is broken");
+        } else if exit_code >= 0xC0000000 {
+            log.warning(format!(
+                "      remote thread exited with NTSTATUS error 0x{:X}",
+                exit_code
+            ));
+        } else {
+            log.info(format!(
+                "      remote thread exited with code {}",
+                exit_code
+            ));
+        }
         log.info(format!(
             "      shellcode remains at remote address {:#p} ({} bytes)",
             base, size

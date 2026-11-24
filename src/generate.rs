@@ -214,26 +214,29 @@ const DATA_MARKER: [u8; 8] = [0xCC, 0xCC, 0xCC, 0xCC, 0x90, 0x90, 0x90, 0x90];
 // Input:  ecx = NumberOfNames, rdx = AddressOfNames VA,
 //         r11d = target hash, rbp = module base, rbx = export dir VA
 // Output: rax = function VA
-// 63 bytes; all internal jumps are position-independent.
+// 65 bytes; all internal jumps are position-independent.
+// rdx is saved/restored around the hash loop (movzx edx clobbers it).
 #[rustfmt::skip]
 const SUB_FIND_FUNCTION: &[u8] = &[
     0xFF, 0xC9,                      // dec ecx
     0x48, 0x63, 0x04, 0x8A,          // movsxd rax, dword [rdx+rcx*4]
     0x48, 0x01, 0xE8,                // add rax, rbp
     0x41, 0x52,                      // push r10
+    0x52,                            // push rdx
     0x45, 0x31, 0xD2,                // xor r10d, r10d
-    // hash_byte: (sub-offset 14)
+    // hash_byte: (sub-offset 15)
     0x0F, 0xB6, 0x10,                // movzx edx, byte [rax]
     0x84, 0xD2,                      // test dl, dl
-    0x74, 0x0C,                      // jz hash_done  (14 → 33, rel = +12)
+    0x74, 0x0C,                      // jz hash_done  (22 → 34, rel = +12)
     0x41, 0xC1, 0xCA, 0x0D,          // ror r10d, 13
     0x41, 0x01, 0xD2,                // add r10d, edx
     0x48, 0xFF, 0xC0,                // inc rax
-    0xEB, 0xED,                      // jmp hash_byte (33 → 14, rel = -19)
-    // hash_done: (sub-offset 33)
+    0xEB, 0xED,                      // jmp hash_byte (34 → 15, rel = -19)
+    // hash_done: (sub-offset 34)
     0x45, 0x39, 0xDA,                // cmp r10d, r11d
+    0x5A,                            // pop rdx
     0x41, 0x5A,                      // pop r10
-    0x75, 0xD8,                      // jne find_function (40 → 0, rel = -40)
+    0x75, 0xD6,                      // jne find_function (42 → 0, rel = -42)
     0x8B, 0x43, 0x24,                // mov eax, [rbx+0x24]
     0x48, 0x01, 0xE8,                // add rax, rbp
     0x0F, 0xB7, 0x04, 0x48,          // movzx eax, word [rax+rcx*2]
@@ -872,7 +875,7 @@ mod tests {
 
     #[test]
     fn test_sub_find_function_size() {
-        assert_eq!(SUB_FIND_FUNCTION.len(), 63);
+        assert_eq!(SUB_FIND_FUNCTION.len(), 65);
     }
 
     #[test]
