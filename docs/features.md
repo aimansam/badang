@@ -14,11 +14,11 @@ Calls the kernel directly using raw syscall numbers, bypassing ntdll hooks entir
 
 ## Inject (Process Injection)
 
-Three techniques:
+Three live injection techniques (all operational with `-x -c`):
 
-- **CreateRemoteThread** — allocate + write + create thread. Simplest, most detected.
-- **APC Injection** — queue code to an alertable thread. Less obvious.
-- **Thread Hijack** — suspend thread, change instruction pointer, resume. No new thread created.
+- **CreateRemoteThread** — allocate + write + create thread. 6-step pipeline: OpenProcess → VirtualAllocEx → WriteProcessMemory → VirtualProtectEx → CreateRemoteThread → WaitForSingleObject. Simplest, most detected.
+- **APC Injection** — wraps shellcode in callee-save trampoline (preserves rbx/rbp/rsi/rdi/r12-r15), writes to target, enumerates threads via ToolHelp, queues APC to all threads. Executes when a thread enters alertable wait. No new thread created.
+- **Thread Hijack (SetThreadContext)** — suspends an existing thread, saves full CONTEXT (all GPRs + RFLAGS), redirects RIP to shellcode in a full-register-save trampoline with completion flag. Polls flag via ReadProcessMemory, then restores original context so the thread continues normally. No new thread, no APC — hardest to detect.
 
 ## Unhook (API Restoration)
 

