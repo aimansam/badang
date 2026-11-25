@@ -11,6 +11,7 @@ pub mod evasion;
 pub mod gui;
 pub mod injection;
 pub mod log;
+pub mod obf;
 pub mod payload;
 pub mod pe;
 pub mod process;

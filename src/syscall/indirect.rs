@@ -35,8 +35,13 @@ pub struct ResolvedSyscall {
     pub method: ResolutionMethod,
 }
 
-const CLEAN_PROLOGUE: [u8; 4] = [0x4C, 0x8B, 0xD1, 0xB8];
-const SYSCALL_RET: [u8; 3] = [0x0F, 0x05, 0xC3];
+fn clean_prologue() -> [u8; 4] {
+    crate::obf::ba(&crate::obf::SYSCALL_PROLOGUE)
+}
+
+fn syscall_ret() -> [u8; 3] {
+    crate::obf::ba(&crate::obf::SYSCALL_RET)
+}
 
 pub fn dry_run(func_name: &str, log: &LogSink) {
     log.info("[DRY RUN] Indirect Syscall Resolution".to_string());
@@ -96,7 +101,7 @@ pub fn print_info(log: &LogSink) {
 
 #[cfg(windows)]
 pub fn resolve(func_name: &str, log: &LogSink) -> Result<ResolvedSyscall, String> {
-    let base = crate::pe::get_module_base("ntdll.dll")?;
+    let base = crate::pe::get_module_base(&crate::obf::s(crate::obf::NTDLL))?;
 
     log.step(format!(
         "[1/4] ntdll.dll base: 0x{:016X}",
@@ -146,8 +151,9 @@ pub fn resolve(func_name: &str, log: &LogSink) -> Result<ResolvedSyscall, String
         .join(" ");
     log.detail(format!("  Bytes: {hex_str}"));
 
+    let clean_prol = clean_prologue();
     let (ssn, method) =
-        if func_bytes.len() >= 8 && func_bytes[0..4] == CLEAN_PROLOGUE {
+        if func_bytes.len() >= 8 && func_bytes[0..4] == clean_prol {
             let ssn = u32::from_le_bytes([
                 func_bytes[4],
                 func_bytes[5],
@@ -177,7 +183,7 @@ pub fn resolve(func_name: &str, log: &LogSink) -> Result<ResolvedSyscall, String
                         let n_addr = unsafe { base.add(ne.rva as usize) };
                         let n_bytes: &[u8] =
                             unsafe { std::slice::from_raw_parts(n_addr as *const u8, 8) };
-                        if n_bytes.len() >= 8 && n_bytes[0..4] == CLEAN_PROLOGUE {
+                        if n_bytes.len() >= 8 && n_bytes[0..4] == clean_prol {
                             let n_ssn = u32::from_le_bytes([
                                 n_bytes[4], n_bytes[5], n_bytes[6], n_bytes[7],
                             ]);
@@ -212,7 +218,8 @@ pub fn resolve(func_name: &str, log: &LogSink) -> Result<ResolvedSyscall, String
         };
 
     let text = crate::pe::find_text_section(base)?;
-    let gadgets = crate::pe::scan_for_pattern(text.base, text.size, &SYSCALL_RET);
+    let sr = syscall_ret();
+    let gadgets = crate::pe::scan_for_pattern(text.base, text.size, &sr);
 
     if gadgets.is_empty() {
         return Err("no syscall;ret gadget found in ntdll .text".to_string());

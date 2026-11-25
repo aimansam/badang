@@ -62,8 +62,8 @@ pub fn print_info(log: &LogSink) {
 #[cfg(windows)]
 pub fn demo_spoofed_call(func_name: &str, log: &LogSink) -> Result<SpoofResult, String> {
     log.step("[1/4] Loading module bases".to_string());
-    let ntdll_base = crate::pe::get_module_base("ntdll.dll")?;
-    let k32_base = crate::pe::get_module_base("kernel32.dll")?;
+    let ntdll_base = crate::pe::get_module_base(&crate::obf::s(crate::obf::NTDLL))?;
+    let k32_base = crate::pe::get_module_base(&crate::obf::s(crate::obf::KERNEL32))?;
 
     log.detail(format!("  ntdll.dll:    0x{:016X}", ntdll_base as usize));
     log.detail(format!("  kernel32.dll: 0x{:016X}", k32_base as usize));

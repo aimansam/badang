@@ -60,22 +60,25 @@ impl SyscallTable {
 }
 
 pub fn get_syscall_number(func_name: &str) -> Option<u32> {
-    match func_name {
-        "NtCreateThreadEx" => Some(0x5A),
-        "NtAllocateVirtualMemory" => Some(0x4B),
-        "NtWriteVirtualMemory" => Some(0x3A),
-        "NtProtectVirtualMemory" => Some(0x4D),
-        "NtMapViewOfSection" => Some(0x5B),
-        "NtQueueApcThread" => Some(0x2B),
-        "NtCreateFile" => Some(0x55),
-        "NtOpenFile" => Some(0x53),
-        "NtReadFile" => Some(0x3F),
-        "NtWriteFile" => Some(0x50),
-        "NtDeviceIoControlFile" => Some(0x52),
-        "NtClose" => Some(0x0C),
-        "NtWaitForSingleObject" => Some(0x66),
-        _ => None,
-    }
+    use crate::obf;
+    let table: &[(&[u8], u32)] = &[
+        (obf::NT_CREATE_THREAD, 0x5A),
+        (obf::NT_ALLOC_VM, 0x4B),
+        (obf::NT_WRITE_VM, 0x3A),
+        (obf::NT_PROTECT_VM, 0x4D),
+        (obf::NT_MAP_VIEW, 0x5B),
+        (obf::NT_QUEUE_APC, 0x2B),
+        (obf::NT_CREATE_FILE, 0x55),
+        (obf::NT_OPEN_FILE, 0x53),
+        (obf::NT_READ_FILE, 0x3F),
+        (obf::NT_WRITE_FILE, 0x50),
+        (obf::NT_DEVICE_IO, 0x52),
+        (obf::NT_CLOSE, 0x0C),
+        (obf::NT_WAIT, 0x66),
+    ];
+    table.iter()
+        .find(|(enc, _)| obf::s(enc) == func_name)
+        .map(|(_, ssn)| *ssn)
 }
 
 pub fn invoke_syscall(func_name: &str, args: Vec<u64>, log: &LogSink) -> std::io::Result<u64> {
@@ -154,10 +157,10 @@ pub fn analyze(func_name: &str, log: &LogSink) {
     log.info(format!("  SSN (from table): 0x{:X} ({})", ssn, ssn));
 
     // Resolve the actual function address from ntdll to read its bytes
-    let ntdll_name = CString::new("ntdll.dll").unwrap();
+    let ntdll_name = CString::new(crate::obf::s(crate::obf::NTDLL)).unwrap();
     let ntdll = unsafe { GetModuleHandleA(ntdll_name.as_ptr() as *const u8) };
     if ntdll.is_null() {
-        log.error("  Failed to get ntdll.dll handle");
+        log.error("  Failed to get module handle");
         return;
     }
 

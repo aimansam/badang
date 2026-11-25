@@ -49,26 +49,16 @@ impl fmt::Display for HookStatus {
 }
 
 // Clean NT API prologue: mov r10, rcx; mov eax, <ssn>
-pub const CLEAN_NT_PROLOGUE: [u8; 4] = [0x4C, 0x8B, 0xD1, 0xB8];
+pub fn clean_nt_prologue() -> [u8; 4] {
+    crate::obf::ba(&crate::obf::SYSCALL_PROLOGUE)
+}
 pub const CLEAN_NT_EPILOGUE: [u8; 4] = [0x48, 0x83, 0xE4, 0xF0];
 
 const NUM_BYTES_TO_READ: usize = 32;
 
-const TARGET_APIS: &[&str] = &[
-    "NtAllocateVirtualMemory",
-    "NtProtectVirtualMemory",
-    "NtWriteVirtualMemory",
-    "NtCreateThreadEx",
-    "NtMapViewOfSection",
-    "NtQueueApcThread",
-    "NtCreateFile",
-    "NtOpenFile",
-    "NtReadFile",
-    "NtWriteFile",
-    "NtClose",
-    "NtWaitForSingleObject",
-    "NtDeviceIoControlFile",
-];
+fn target_apis() -> Vec<String> {
+    crate::obf::API_LIST.iter().map(|enc| crate::obf::s(enc)).collect()
+}
 
 pub fn classify_hook(bytes: &[u8]) -> Option<HookType> {
     if bytes.is_empty() {
@@ -92,8 +82,7 @@ pub fn classify_hook(bytes: &[u8]) -> Option<HookType> {
             return Some(HookType::PushPop);
         }
     }
-    // Check if first 4 bytes match clean NT prologue
-    if bytes.len() >= 4 && bytes[..4] != CLEAN_NT_PROLOGUE {
+    if bytes.len() >= 4 && bytes[..4] != clean_nt_prologue() {
         return Some(HookType::Unknown);
     }
     None
@@ -154,10 +143,10 @@ pub fn analyze(pid: u32, log: &LogSink) {
         return;
     }
 
-    let ntdll_name = CString::new("ntdll.dll").unwrap();
+    let ntdll_name = CString::new(crate::obf::s(crate::obf::NTDLL)).unwrap();
     let ntdll = unsafe { GetModuleHandleA(ntdll_name.as_ptr() as *const u8) };
     if ntdll.is_null() {
-        log.error("  Failed to get ntdll.dll handle");
+        log.error("  Failed to get module handle");
         unsafe { CloseHandle(handle) };
         return;
     }
@@ -166,8 +155,9 @@ pub fn analyze(pid: u32, log: &LogSink) {
     let mut clean_count = 0u32;
     let mut failed_count = 0u32;
 
-    for api_name in TARGET_APIS {
-        let c_name = match CString::new(*api_name) {
+    let apis = target_apis();
+    for api_name in &apis {
+        let c_name = match CString::new(api_name.as_str()) {
             Ok(n) => n,
             Err(_) => continue,
         };
@@ -231,7 +221,7 @@ pub fn analyze(pid: u32, log: &LogSink) {
 
     log.info("");
     log.step("  === Summary ===");
-    log.info(format!("  Scanned: {} APIs", TARGET_APIS.len()));
+    log.info(format!("  Scanned: {} APIs", apis.len()));
     if hooked_count > 0 {
         log.warning(format!("  Hooked:  {}", hooked_count));
     } else {

@@ -87,6 +87,36 @@ Set-MpPreference -DisableRealtimeMonitoring $false
 
 > **Note:** These exclusions are only for your development machine. Never disable Defender on production systems. If cross-compiling from Linux, Defender is not an issue.
 
+## String Obfuscation (`src/obf.rs`)
+
+The release binary uses compile-time XOR obfuscation to prevent static AV signature matching. All sensitive data is stored encrypted and decrypted at runtime.
+
+**What's encrypted:**
+- API function names (Nt\*, AMSI, ETW targets)
+- DLL names (ntdll.dll, amsi.dll, kernel32.dll, user32.dll, ws2\_32.dll, xpsservices.dll)
+- Patch byte signatures (AMSI bypass, ETW ret)
+- Syscall patterns (prologue, syscall;ret gadget)
+- Shellcode templates (PEB walking, find\_function, get\_data\_ptr, all main payloads)
+
+**What's NOT encrypted (intentionally):**
+- Display-only strings in help text and dry\_run descriptions — not part of AV signatures
+- Linker directives (`#[link(name = "...")]`) — unavoidable in PE imports
+- Match arms in `from_str()` — lowercase user-input patterns, not API signatures
+
+**Adding new sensitive strings:**
+
+1. XOR each byte with `0x4B`: `python3 -c "print([hex(b ^ 0x4B) for b in b'YourString'])"`
+2. Add the encrypted const to `src/obf.rs`
+3. Use `obf::s()` for strings, `obf::b()` for byte vecs, `obf::ba()` for fixed arrays
+4. Never put the plaintext form in non-test Rust code
+
+**Release profile** (in `Cargo.toml`) complements obfuscation:
+- `opt-level = 3` — aggressive optimization removes dead code paths
+- `strip = true` — removes symbol table
+- `lto = true` — link-time optimization across crates
+- `codegen-units = 1` — single compilation unit for maximum optimization
+- `panic = "abort"` — no unwinding infrastructure
+
 ## Safety Model
 
 - Dry-run mode ON by default — no execution
