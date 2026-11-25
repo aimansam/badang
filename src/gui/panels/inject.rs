@@ -9,6 +9,7 @@ const TECHNIQUES: &[(&str, &str)] = &[
     ("createremote", "CreateRemoteThread"),
     ("apc", "APC Injection"),
     ("hijack", "Thread Hijack (SetThreadContext)"),
+    ("earlybird", "Early Bird APC"),
 ];
 
 #[derive(Default)]
@@ -136,25 +137,39 @@ pub fn draw(
         .clicked()
     {
         state.error.clear();
-        let pid = match state.pid_input.trim().parse::<u32>() {
-            Ok(p) => p,
-            Err(_) => {
-                state.error = "Invalid PID — enter a number".to_string();
-                return;
+        let technique_key = TECHNIQUES[state.selected_technique].0;
+        let is_earlybird = technique_key == "earlybird";
+
+        let pid = if is_earlybird {
+            0
+        } else {
+            match state.pid_input.trim().parse::<u32>() {
+                Ok(p) => p,
+                Err(_) => {
+                    state.error = "Invalid PID — enter a number".to_string();
+                    return;
+                }
             }
         };
-        if let Err(e) = crate::safety::validate_target(pid) {
-            state.error = e;
-            return;
+        if !is_earlybird {
+            if let Err(e) = crate::safety::validate_target(pid) {
+                state.error = e;
+                return;
+            }
         }
 
-        let technique_key = TECHNIQUES[state.selected_technique].0;
-
         if *dry_run {
-            log.step(format!(
-                "[DRY RUN] Would inject into PID {} using technique {}",
-                pid, technique_key
-            ));
+            if is_earlybird {
+                log.step(format!(
+                    "[DRY RUN] Would spawn suspended process using technique {}",
+                    technique_key
+                ));
+            } else {
+                log.step(format!(
+                    "[DRY RUN] Would inject into PID {} using technique {}",
+                    pid, technique_key
+                ));
+            }
             crate::injection::dry_run(pid, technique_key, log);
         } else {
             let payload_path = state.payload_path.trim().to_string();
@@ -183,7 +198,11 @@ pub fn draw(
                 payload_path,
                 shellcode.len()
             ));
-            log.info(format!("  Target PID: {}", pid));
+            if is_earlybird {
+                log.info("  Mode: spawns a new suspended process (PID not required)");
+            } else {
+                log.info(format!("  Target PID: {}", pid));
+            }
             log.warning("  WARNING: this performs REAL Win32 calls against a live process.");
 
             let (tx, rx) = mpsc::channel::<Result<InjectionResult, String>>();

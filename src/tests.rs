@@ -81,6 +81,19 @@ fn test_injection_technique_from_str() {
         InjectionTechnique::from_str("setthreadcontext"),
         Some(InjectionTechnique::ThreadHijack)
     );
+    // Existing variant: EarlyBird
+    assert_eq!(
+        InjectionTechnique::from_str("earlybird"),
+        Some(InjectionTechnique::EarlyBird)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("early_bird"),
+        Some(InjectionTechnique::EarlyBird)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("early-bird"),
+        Some(InjectionTechnique::EarlyBird)
+    );
     // Unknown strings return None
     assert!(InjectionTechnique::from_str("").is_none());
     assert!(InjectionTechnique::from_str("nonexistent").is_none());
@@ -96,6 +109,9 @@ fn test_injection_technique_name() {
 
     let th = InjectionTechnique::ThreadHijack;
     assert_eq!(th.name(), "Thread Hijack (SetThreadContext)");
+
+    let eb = InjectionTechnique::EarlyBird;
+    assert_eq!(eb.name(), "Early Bird APC");
 }
 
 #[test]
@@ -404,6 +420,7 @@ fn test_all_techniques_dispatch() {
         InjectionTechnique::CreateRemoteThread,
         InjectionTechnique::APC,
         InjectionTechnique::ThreadHijack,
+        InjectionTechnique::EarlyBird,
     ] {
         let err = crate::injection::live_inject(1234, technique, &[0x90, 0x90], &log)
             .expect_err("should fail on non-Windows or with invalid PID");
@@ -419,7 +436,7 @@ fn test_all_techniques_dispatch() {
 #[test]
 fn test_wrap_for_apc_structure() {
     let shellcode = vec![0xCC; 10];
-    let wrapped = crate::injection::wrap_for_apc(&shellcode);
+    let wrapped = crate::injection::wrappers::wrap_for_apc(&shellcode);
     assert_eq!(wrapped.len(), 21 + 17 + 10);
     assert_eq!(wrapped[16], 0xE8);
     assert_eq!(wrapped[17], 0x11);
@@ -430,7 +447,7 @@ fn test_wrap_for_apc_structure() {
 #[test]
 fn test_wrap_for_hijack_structure() {
     let shellcode = vec![0xCC; 20];
-    let wrapped = crate::injection::wrap_for_hijack(&shellcode);
+    let wrapped = crate::injection::wrappers::wrap_for_hijack(&shellcode);
     assert_eq!(wrapped.len(), 36 + 46 + 20 + 1);
     // Prologue ends with CALL that jumps over epilogue
     assert_eq!(wrapped[31], 0xE8);
