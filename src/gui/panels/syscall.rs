@@ -22,6 +22,7 @@ const FUNCTIONS: &[&str] = &[
 #[derive(Default)]
 pub struct SyscallState {
     pub selected: usize,
+    pub indirect: bool,
 }
 
 pub fn draw(ui: &mut egui::Ui, state: &mut SyscallState, dry_run: &mut bool, log: &LogSink) {
@@ -38,6 +39,8 @@ pub fn draw(ui: &mut egui::Ui, state: &mut SyscallState, dry_run: &mut bool, log
                 }
             });
     });
+
+    ui.checkbox(&mut state.indirect, "Indirect syscall (Hell's Gate / Halo's Gate)");
 
     ui.add_space(4.0);
 
@@ -62,7 +65,23 @@ pub fn draw(ui: &mut egui::Ui, state: &mut SyscallState, dry_run: &mut bool, log
 
     if ui.button("Look Up").clicked() {
         let func = FUNCTIONS[state.selected];
-        if *dry_run {
+        if state.indirect {
+            if *dry_run {
+                crate::syscall::indirect::dry_run(func, log);
+            } else {
+                match crate::syscall::indirect::resolve(func, log) {
+                    Ok(result) => {
+                        log.info(format!(
+                            "  ✓ {} → SSN 0x{:X}, gadget 0x{:016X} ({})",
+                            result.func_name, result.ssn, result.syscall_gadget, result.method.name()
+                        ));
+                    }
+                    Err(e) => {
+                        log.error(format!("  Indirect syscall failed: {e}"));
+                    }
+                }
+            }
+        } else if *dry_run {
             log.step(format!("[DRY RUN] Would invoke syscall: {}", func));
             crate::syscall::dry_run(func, log);
         } else {

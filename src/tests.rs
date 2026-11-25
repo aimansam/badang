@@ -3,10 +3,15 @@
 // Keep in sync with the actual exports in each module file.
 #![allow(unused_imports)]
 
+use crate::evasion::amsi::AmsiTarget;
 use crate::cli::CLI;
-use crate::detect::{
+use crate::payload::encrypt::EncryptMethod;
+use crate::syscall::indirect::ResolutionMethod;
+use crate::evasion::sleep_obfs::SleepMethod;
+use crate::analysis::detect::{
     check_api, classify_hook, HookStatus, HookType, CLEAN_NT_EPILOGUE, CLEAN_NT_PROLOGUE,
 };
+use crate::evasion::etw::EtwTarget;
 use crate::injection::InjectionTechnique;
 use crate::log::LogSink;
 use crate::syscall::{
@@ -16,7 +21,7 @@ use crate::syscall::{
     SYS_NT_QUEUE_APC_THREAD, SYS_NT_READ_FILE, SYS_NT_WAIT_FOR_SINGLE_OBJECT, SYS_NT_WRITE_FILE,
     SYS_NT_WRITE_VIRTUAL_MEMORY,
 };
-use crate::unhook::UnhookMethod;
+use crate::analysis::unhook::UnhookMethod;
 
 #[test]
 fn test_cli_struct() {
@@ -40,6 +45,17 @@ fn test_cli_struct() {
         generate_lhost: "127.0.0.1".to_string(),
         generate_lport: 4444,
         scan_filter: String::new(),
+        etw_target: "EtwEventWrite".to_string(),
+        amsi_target: "AmsiScanBuffer".to_string(),
+        encrypt_method: "xor".to_string(),
+        encrypt_key: String::new(),
+        ppid_parent: String::new(),
+        ppid_child: "notepad.exe".to_string(),
+        ppid_suspended: false,
+        indirect: false,
+        sleep_method: "manual".to_string(),
+        sleep_duration: 3000,
+        spoof_func: "NtAllocateVirtualMemory".to_string(),
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);
@@ -107,6 +123,28 @@ fn test_injection_technique_from_str() {
         InjectionTechnique::from_str("ntmapviewofsection"),
         Some(InjectionTechnique::SectionMapping)
     );
+    // Callback
+    assert_eq!(
+        InjectionTechnique::from_str("callback"),
+        Some(InjectionTechnique::Callback)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("enumwindows"),
+        Some(InjectionTechnique::Callback)
+    );
+    // ModuleStomp
+    assert_eq!(
+        InjectionTechnique::from_str("stomp"),
+        Some(InjectionTechnique::ModuleStomp)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("modulestomp"),
+        Some(InjectionTechnique::ModuleStomp)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("dllstomp"),
+        Some(InjectionTechnique::ModuleStomp)
+    );
     // Unknown strings return None
     assert!(InjectionTechnique::from_str("").is_none());
     assert!(InjectionTechnique::from_str("nonexistent").is_none());
@@ -128,6 +166,12 @@ fn test_injection_technique_name() {
 
     let sm = InjectionTechnique::SectionMapping;
     assert_eq!(sm.name(), "Section Mapping (MapViewOfFile)");
+
+    let cb = InjectionTechnique::Callback;
+    assert_eq!(cb.name(), "Callback Execution (EnumWindows)");
+
+    let ms = InjectionTechnique::ModuleStomp;
+    assert_eq!(ms.name(), "Module Stomping");
 }
 
 #[test]
@@ -438,6 +482,8 @@ fn test_all_techniques_dispatch() {
         InjectionTechnique::ThreadHijack,
         InjectionTechnique::EarlyBird,
         InjectionTechnique::SectionMapping,
+        InjectionTechnique::Callback,
+        InjectionTechnique::ModuleStomp,
     ] {
         let err = crate::injection::live_inject(1234, technique, &[0x90, 0x90], &log)
             .expect_err("should fail on non-Windows or with invalid PID");
@@ -475,6 +521,329 @@ fn test_wrap_for_hijack_structure() {
     assert_eq!(wrapped[102], 0x00);
     // Epilogue ends with pause+jmp spin-wait
     assert_eq!(&wrapped[78..82], &[0xF3, 0x90, 0xEB, 0xFC]);
+}
+
+// === ETW Patching ===
+
+#[test]
+fn test_etw_target_from_str() {
+    assert_eq!(EtwTarget::from_str("etweventwrite"), Some(EtwTarget::EtwEventWrite));
+    assert_eq!(EtwTarget::from_str("etwwrite"), Some(EtwTarget::EtwEventWrite));
+    assert_eq!(EtwTarget::from_str("EventWrite"), Some(EtwTarget::EtwEventWrite));
+    assert_eq!(EtwTarget::from_str("etweventwritefull"), Some(EtwTarget::EtwEventWriteFull));
+    assert_eq!(EtwTarget::from_str("etwwritefull"), Some(EtwTarget::EtwEventWriteFull));
+    assert_eq!(EtwTarget::from_str("nttraceevent"), Some(EtwTarget::NtTraceEvent));
+    assert_eq!(EtwTarget::from_str("traceevent"), Some(EtwTarget::NtTraceEvent));
+    assert!(EtwTarget::from_str("").is_none());
+    assert!(EtwTarget::from_str("nonexistent").is_none());
+}
+
+#[test]
+fn test_etw_target_name() {
+    assert_eq!(EtwTarget::EtwEventWrite.name(), "EtwEventWrite");
+    assert_eq!(EtwTarget::EtwEventWriteFull.name(), "EtwEventWriteFull");
+    assert_eq!(EtwTarget::NtTraceEvent.name(), "NtTraceEvent");
+}
+
+#[test]
+fn test_etw_target_dll() {
+    for target in EtwTarget::all() {
+        assert_eq!(target.dll(), "ntdll.dll");
+    }
+}
+
+#[test]
+fn test_etw_dry_run() {
+    let log = LogSink::new();
+    crate::evasion::etw::dry_run("EtwEventWrite", &log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+#[test]
+fn test_etw_print_info() {
+    let log = LogSink::new();
+    crate::evasion::etw::print_info(&log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+// === AMSI Bypass ===
+
+#[test]
+fn test_amsi_target_from_str() {
+    assert_eq!(AmsiTarget::from_str("amsiscanbuffer"), Some(AmsiTarget::AmsiScanBuffer));
+    assert_eq!(AmsiTarget::from_str("scanbuffer"), Some(AmsiTarget::AmsiScanBuffer));
+    assert_eq!(AmsiTarget::from_str("amsi"), Some(AmsiTarget::AmsiScanBuffer));
+    assert_eq!(AmsiTarget::from_str("amsiscanstring"), Some(AmsiTarget::AmsiScanString));
+    assert_eq!(AmsiTarget::from_str("scanstring"), Some(AmsiTarget::AmsiScanString));
+    assert!(AmsiTarget::from_str("").is_none());
+    assert!(AmsiTarget::from_str("nonexistent").is_none());
+}
+
+#[test]
+fn test_amsi_target_name() {
+    assert_eq!(AmsiTarget::AmsiScanBuffer.name(), "AmsiScanBuffer");
+    assert_eq!(AmsiTarget::AmsiScanString.name(), "AmsiScanString");
+}
+
+#[test]
+fn test_amsi_target_dll() {
+    for target in AmsiTarget::all() {
+        assert_eq!(target.dll(), "amsi.dll");
+    }
+}
+
+#[test]
+fn test_amsi_patch_bytes() {
+    let expected: &[u8] = &[0xB8, 0x57, 0x00, 0x07, 0x80, 0xC3];
+    for target in AmsiTarget::all() {
+        assert_eq!(target.patch_bytes(), expected);
+        assert_eq!(target.patch_bytes().len(), 6);
+    }
+}
+
+#[test]
+fn test_amsi_dry_run() {
+    let log = LogSink::new();
+    crate::evasion::amsi::dry_run("AmsiScanBuffer", &log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+#[test]
+fn test_amsi_print_info() {
+    let log = LogSink::new();
+    crate::evasion::amsi::print_info(&log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+// === Shellcode Encryption ===
+
+#[test]
+fn test_encrypt_method_from_str() {
+    assert_eq!(EncryptMethod::from_str("xor"), Some(EncryptMethod::XorSingle));
+    assert_eq!(EncryptMethod::from_str("xorsingle"), Some(EncryptMethod::XorSingle));
+    assert_eq!(EncryptMethod::from_str("xormulti"), Some(EncryptMethod::XorMulti));
+    assert_eq!(EncryptMethod::from_str("xor-multi"), Some(EncryptMethod::XorMulti));
+    assert_eq!(EncryptMethod::from_str("rc4"), Some(EncryptMethod::Rc4));
+    assert_eq!(EncryptMethod::from_str("arcfour"), Some(EncryptMethod::Rc4));
+    assert!(EncryptMethod::from_str("").is_none());
+    assert!(EncryptMethod::from_str("aes").is_none());
+}
+
+#[test]
+fn test_encrypt_method_name() {
+    assert_eq!(EncryptMethod::XorSingle.name(), "XOR (single-byte key)");
+    assert_eq!(EncryptMethod::XorMulti.name(), "XOR (multi-byte key)");
+    assert_eq!(EncryptMethod::Rc4.name(), "RC4");
+}
+
+#[test]
+fn test_xor_single_roundtrip() {
+    let data = vec![0x90, 0x31, 0xC0, 0xC3, 0x48, 0x89, 0xE5];
+    let key = vec![0xAA];
+    let encrypted = crate::payload::encrypt::xor_encrypt(&data, &key);
+    assert_ne!(encrypted, data);
+    let decrypted = crate::payload::encrypt::xor_encrypt(&encrypted, &key);
+    assert_eq!(decrypted, data);
+}
+
+#[test]
+fn test_xor_multi_roundtrip() {
+    let data = vec![0x90, 0x31, 0xC0, 0xC3, 0x48, 0x89, 0xE5, 0xFF];
+    let key = b"SECRET".to_vec();
+    let encrypted = crate::payload::encrypt::xor_encrypt(&data, &key);
+    assert_ne!(encrypted, data);
+    let decrypted = crate::payload::encrypt::xor_encrypt(&encrypted, &key);
+    assert_eq!(decrypted, data);
+}
+
+#[test]
+fn test_rc4_roundtrip() {
+    let data = vec![0x90, 0x31, 0xC0, 0xC3, 0x48, 0x89, 0xE5, 0xFF, 0x00, 0x41];
+    let key = b"testkey".to_vec();
+    let encrypted = crate::payload::encrypt::rc4_crypt(&data, &key);
+    assert_ne!(encrypted, data);
+    let decrypted = crate::payload::encrypt::rc4_crypt(&encrypted, &key);
+    assert_eq!(decrypted, data);
+}
+
+#[test]
+fn test_encrypt_xor_single_produces_stub() {
+    let payload = vec![0xCC; 20];
+    let result = crate::payload::encrypt::encrypt(&payload, EncryptMethod::XorSingle, &[0x41]).unwrap();
+    assert!(result.stub_len > 0);
+    assert_eq!(result.encrypted_len, 20);
+    assert_eq!(result.combined.len(), result.stub_len + result.encrypted_len);
+    assert_eq!(result.method, EncryptMethod::XorSingle);
+}
+
+#[test]
+fn test_encrypt_xor_multi_produces_stub() {
+    let payload = vec![0xCC; 50];
+    let result =
+        crate::payload::encrypt::encrypt(&payload, EncryptMethod::XorMulti, b"ABCD").unwrap();
+    assert!(result.stub_len > 0);
+    assert_eq!(result.encrypted_len, 50);
+    assert_eq!(result.combined.len(), result.stub_len + result.encrypted_len);
+}
+
+#[test]
+fn test_encrypt_rc4_produces_stub() {
+    let payload = vec![0xCC; 100];
+    let result = crate::payload::encrypt::encrypt(&payload, EncryptMethod::Rc4, b"key123").unwrap();
+    assert!(result.stub_len > 0);
+    assert_eq!(result.encrypted_len, 100);
+    assert_eq!(result.combined.len(), result.stub_len + result.encrypted_len);
+}
+
+#[test]
+fn test_encrypt_rejects_empty_payload() {
+    let err = crate::payload::encrypt::encrypt(&[], EncryptMethod::XorSingle, &[0x41])
+        .expect_err("empty payload must be rejected");
+    assert!(err.contains("empty"));
+}
+
+#[test]
+fn test_encrypt_rejects_empty_key() {
+    let err = crate::payload::encrypt::encrypt(&[0x90], EncryptMethod::XorSingle, &[])
+        .expect_err("empty key must be rejected");
+    assert!(err.contains("empty"));
+}
+
+#[test]
+fn test_encrypt_xor_single_rejects_multi_byte_key() {
+    let err = crate::payload::encrypt::encrypt(&[0x90], EncryptMethod::XorSingle, &[0x41, 0x42])
+        .expect_err("multi-byte key for single mode must be rejected");
+    assert!(err.contains("1 key byte"));
+}
+
+#[test]
+fn test_encrypt_print_info() {
+    let log = LogSink::new();
+    crate::payload::encrypt::print_info(&log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+// === PPID Spoofing ===
+
+#[test]
+fn test_ppid_dry_run() {
+    let log = LogSink::new();
+    crate::evasion::ppid::dry_run("explorer.exe", "notepad.exe", &log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+#[test]
+fn test_ppid_print_info() {
+    let log = LogSink::new();
+    crate::evasion::ppid::print_info(&log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+// === Indirect Syscalls ===
+
+#[test]
+fn test_resolution_method_from_str() {
+    assert_eq!(ResolutionMethod::from_str("hellsgate"), Some(ResolutionMethod::HellsGate));
+    assert_eq!(ResolutionMethod::from_str("hells_gate"), Some(ResolutionMethod::HellsGate));
+    assert_eq!(ResolutionMethod::from_str("hells-gate"), Some(ResolutionMethod::HellsGate));
+    assert_eq!(ResolutionMethod::from_str("hell"), Some(ResolutionMethod::HellsGate));
+    assert_eq!(ResolutionMethod::from_str("halosgate"), Some(ResolutionMethod::HalosGate));
+    assert_eq!(ResolutionMethod::from_str("halos_gate"), Some(ResolutionMethod::HalosGate));
+    assert_eq!(ResolutionMethod::from_str("halos-gate"), Some(ResolutionMethod::HalosGate));
+    assert_eq!(ResolutionMethod::from_str("halo"), Some(ResolutionMethod::HalosGate));
+    assert!(ResolutionMethod::from_str("").is_none());
+    assert!(ResolutionMethod::from_str("nonexistent").is_none());
+}
+
+#[test]
+fn test_resolution_method_name() {
+    assert_eq!(ResolutionMethod::HellsGate.name(), "Hell's Gate");
+    assert_eq!(ResolutionMethod::HalosGate.name(), "Halo's Gate");
+}
+
+#[test]
+fn test_indirect_syscall_dry_run() {
+    let log = LogSink::new();
+    crate::syscall::indirect::dry_run("NtAllocateVirtualMemory", &log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+#[test]
+fn test_indirect_syscall_print_info() {
+    let log = LogSink::new();
+    crate::syscall::indirect::print_info(&log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+// === Sleep Obfuscation ===
+
+#[test]
+fn test_sleep_method_from_str() {
+    assert_eq!(SleepMethod::from_str("manual"), Some(SleepMethod::Manual));
+    assert_eq!(SleepMethod::from_str("xor"), Some(SleepMethod::Manual));
+    assert_eq!(SleepMethod::from_str("basic"), Some(SleepMethod::Manual));
+    assert_eq!(SleepMethod::from_str("ekko"), Some(SleepMethod::Ekko));
+    assert_eq!(SleepMethod::from_str("rop"), Some(SleepMethod::Ekko));
+    assert_eq!(SleepMethod::from_str("timer"), Some(SleepMethod::Ekko));
+    assert!(SleepMethod::from_str("").is_none());
+    assert!(SleepMethod::from_str("aes").is_none());
+}
+
+#[test]
+fn test_sleep_method_name() {
+    assert_eq!(SleepMethod::Manual.name(), "Manual (XOR encrypt/sleep/decrypt)");
+    assert_eq!(SleepMethod::Ekko.name(), "Ekko (ROP timer queue)");
+}
+
+#[test]
+fn test_sleep_method_all() {
+    let all = SleepMethod::all();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0], SleepMethod::Manual);
+    assert_eq!(all[1], SleepMethod::Ekko);
+}
+
+#[test]
+fn test_sleep_dry_run() {
+    let log = LogSink::new();
+    crate::evasion::sleep_obfs::dry_run("manual", 3000, &log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+#[test]
+fn test_sleep_print_info() {
+    let log = LogSink::new();
+    crate::evasion::sleep_obfs::print_info(&log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+// === Stack Spoofing ===
+
+#[test]
+fn test_stack_spoof_dry_run() {
+    let log = LogSink::new();
+    crate::evasion::stack_spoof::dry_run("NtAllocateVirtualMemory", &log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+}
+
+#[test]
+fn test_stack_spoof_print_info() {
+    let log = LogSink::new();
+    crate::evasion::stack_spoof::print_info(&log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
 }
 
 /// Manual end-to-end verification — ONLY on an authorized Windows VM:

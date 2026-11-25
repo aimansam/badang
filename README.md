@@ -25,10 +25,15 @@
 
 Badang (named after the Malaysian folk hero known for supernatural strength) is a research toolkit that demonstrates techniques used to bypass or evade Endpoint Detection and Response (EDR) systems on Windows. It covers:
 
-1. **Direct Syscall Invocation** — Bypassing user-mode API hooks by calling kernel functions directly via the `syscall` instruction
-2. **Process Injection Techniques** — 5 methods for injecting code into other processes (CreateRemoteThread, APC, Thread Hijack, Early Bird, Section Mapping)
+1. **Direct & Indirect Syscall Invocation** — Bypassing user-mode API hooks by calling kernel functions directly via `syscall`, or indirectly via Hell's Gate / Halo's Gate
+2. **Process Injection Techniques** — 7 methods for injecting code into other processes (CreateRemoteThread, APC, Thread Hijack, Early Bird, Section Mapping, Callback Execution, Module Stomping)
 3. **API Unhooking** — Restoring original function bytes to neutralize EDR hooks
 4. **Hook Detection Analysis** — Identifying which APIs have been hooked by security software
+5. **ETW Patching & AMSI Bypass** — Blinding EDR telemetry and disabling script scanning
+6. **Shellcode Encryption** — XOR/RC4 encryption with PIC decryption stubs to defeat static signatures
+7. **PPID Spoofing** — Spawning processes with fake parent PIDs to evade process tree analysis
+8. **Sleep Obfuscation** — Encrypting shellcode in memory during sleep to evade memory scanners
+9. **Stack Spoofing** — Building fake call stack frames to bypass EDR stack-walking
 
 Each technique includes detailed documentation of how it works, why it can bypass EDR, and what detection methods exist.
 
@@ -39,9 +44,17 @@ Each technique includes detailed documentation of how it works, why it can bypas
 | Module | Description |
 |--------|-------------|
 | **Syscall** | Direct syscall invocation with Windows syscall number reference table (13 NT APIs) |
-| **Injection** | 5 live process injection techniques: CreateRemoteThread, APC, Thread Hijack, Early Bird APC, Section Mapping |
+| **Indirect Syscall** | Hell's Gate / Halo's Gate — resolve SSNs at runtime from ntdll PE, execute from ntdll's own gadget |
+| **Injection** | 7 live process injection techniques: CreateRemoteThread, APC, Thread Hijack, Early Bird APC, Section Mapping, Callback Execution, Module Stomping |
+| **ETW** | Patch EtwEventWrite/EtwEventWriteFull/NtTraceEvent to blind EDR telemetry |
+| **AMSI** | Patch AmsiScanBuffer/AmsiScanString to bypass script scanning |
+| **Encrypt** | XOR (single/multi-byte) and RC4 shellcode encryption with PIC decryption stubs |
+| **PPID** | PPID spoofing — spawn processes with fake parent PIDs |
+| **Sleep** | Sleep obfuscation — encrypt memory during sleep, decrypt on wake |
+| **Stack Spoof** | Build fake call stack frames to bypass EDR stack-walking |
 | **Unhook** | API unhooking via memory comparison and byte restoration |
 | **Detect** | Hook detection analysis — identify hooked APIs in target processes |
+| **PE** | Shared PE helpers — export table parsing, .text section finding, pattern scanning |
 | **Safety** | Built-in safety controls: `--dry-run` mode, `--pid` required, system process protection, payload verification |
 
 ## Payload Generation
@@ -194,7 +207,7 @@ cargo build --release --target x86_64-pc-windows-gnu --features gui
 
 Launch `badang.exe` (built with `--features gui`) for the native desktop interface:
 
-- **Tab bar**: Switch between Analyze, Syscall, Inject, Load, and Unhook panels
+- **Tab bar**: Switch between Scan, Analyze, Syscall, Inject, Load, Unhook, ETW, AMSI, PPID, Sleep, and Spoof panels
 - **Dry Run toggle**: ON by default (green indicator in the top bar). Click to toggle.
 - **Confirm checkbox**: Required alongside Dry Run OFF for live operations
 - **Log panel**: Scrollable output at the bottom — color-coded by severity
@@ -236,9 +249,15 @@ badang-cli.exe unhook --func NtCreateFile
 | Command | Description | Requires `--pid` |
 |---------|-------------|------------------|
 | `analyze` | Detect hooked APIs in a target process | Yes |
-| `syscall` | Invoke a function via direct syscall | No |
-| `inject` | Process injection (5 techniques — see below) | Depends |
+| `syscall` | Direct/indirect syscall invocation (add `--indirect` for Hell's Gate) | No |
+| `inject` | Process injection (7 techniques — see below) | Depends |
 | `unhook` | Demonstrate API unhooking | No |
+| `etw` | Patch ETW functions to blind EDR telemetry | No |
+| `amsi` | Patch AMSI functions to bypass script scanning | No |
+| `encrypt` | Encrypt shellcode with XOR/RC4 (adds decryption stub) | No |
+| `ppid` | PPID spoofing (spawn process with fake parent) | No |
+| `sleep` | Sleep obfuscation demo (encrypt memory during sleep) | No |
+| `spoof` | Stack spoofing demo (fake call stack frames) | No |
 | `generate` | Generate shellcode payload (exec/msgbox/reverse/bind) | No |
 | `convert` | Convert shellcode between formats | No |
 | `load` | Load and verify a shellcode payload file | No |
@@ -289,7 +308,7 @@ This skips the hooked `ntdll.dll` entirely, going straight from user-mode to ker
 
 ### Process Injection
 
-Badang implements 5 live injection techniques (all operational with `--execute --confirm`):
+Badang implements 7 live injection techniques (all operational with `--execute --confirm`):
 
 | # | Technique | Key Evasion Angle | PID Required |
 |---|-----------|-------------------|--------------|
@@ -298,6 +317,8 @@ Badang implements 5 live injection techniques (all operational with `--execute -
 | 3 | **Thread Hijack (SetThreadContext)** | No new thread, no APC — hijacks existing thread's RIP | Yes |
 | 4 | **Early Bird APC** | Runs before EDR hooks install — spawns suspended process | No |
 | 5 | **Section Mapping (MapViewOfFile)** | `WriteProcessMemory` never called — uses shared memory section | Yes |
+| 6 | **Callback Execution (EnumWindows)** | No thread creation APIs — shellcode fires as a Windows callback | No |
+| 7 | **Module Stomping** | Shellcode lives inside a signed DLL's .text — appears legitimate | No |
 
 **CreateRemoteThread**: 6-step pipeline — OpenProcess → VirtualAllocEx → WriteProcessMemory → VirtualProtectEx → CreateRemoteThread → WaitForSingleObject.
 
@@ -308,6 +329,32 @@ Badang implements 5 live injection techniques (all operational with `--execute -
 **Early Bird APC**: Creates a new process with `CREATE_SUSPENDED`, writes shellcode, queues APC to the main thread, then resumes. The APC fires during process initialization — before EDR user-mode hooks are installed.
 
 **Section Mapping**: Creates a shared memory section via `CreateFileMappingW`, maps it locally to write shellcode (`memcpy`, not `WriteProcessMemory`), then maps the same section into the target process via `MapViewOfFileNuma2` as `PAGE_EXECUTE_READ`. EDR hooks on `WriteProcessMemory` see nothing.
+
+**Callback Execution**: Allocates local memory, writes shellcode, casts to `WNDENUMPROC`, calls `EnumWindows`. No `CreateThread` or `CreateRemoteThread` — the shellcode fires as a Windows callback. Returns `FALSE` to stop enumeration after executing.
+
+**Module Stomping**: Loads a legitimate signed DLL (`xpsservices.dll`) with `DONT_RESOLVE_DLL_REFERENCES`, parses PE to find `.text` section, overwrites it with shellcode. Memory scanners see shellcode backed by a Microsoft-signed module, not anonymous executable pages.
+
+### Indirect Syscalls (Hell's Gate / Halo's Gate)
+
+Resolves SSNs at runtime by parsing ntdll's PE export table in memory, then executes the `syscall` instruction from a gadget inside ntdll's own `.text` section. Bypasses EDR checks for syscalls originating outside ntdll.
+
+**Hell's Gate**: If function prologue matches `4C 8B D1 B8 xx xx 00 00` (clean), reads SSN directly.
+
+**Halo's Gate**: If function is hooked (prologue patched), walks to neighboring `Zw*` exports. If neighbor is clean at distance ±N, target SSN = neighbor_ssn ∓ N.
+
+### ETW Patching & AMSI Bypass
+
+**ETW**: Patches `EtwEventWrite` / `EtwEventWriteFull` / `NtTraceEvent` in `ntdll.dll` with `0xC3` (ret), blinding ETW telemetry that EDRs rely on.
+
+**AMSI**: Loads `amsi.dll`, patches `AmsiScanBuffer` / `AmsiScanString` with `B8 57 00 07 80 C3` (mov eax, E_INVALIDARG; ret) — 6 bytes that make AMSI return "invalid" for all scans.
+
+### Sleep Obfuscation
+
+Encrypts shellcode in memory during sleep periods. Before sleeping: `VirtualProtect(RW)` → XOR-encrypt in-place → `VirtualProtect(NOACCESS)`. After waking: decrypt → `VirtualProtect(RX)`. Memory scanners see encrypted garbage with NOACCESS protection.
+
+### Stack Spoofing
+
+Builds fake call stack frames before calling Windows APIs. Scans ntdll/kernel32 `.text` for ROP gadgets (`ret`, `pop rbp; ret`), constructs a chain of fake frames with legitimate return addresses. EDR stack-walking sees ntdll → kernel32 instead of shellcode.
 
 ### API Unhooking
 
@@ -343,25 +390,49 @@ badang/
 │   ├── hooking.md          # EDR hooking explained
 │   └── killchain.md        # Badang in the kill chain
 ├── src/
-│   ├── lib.rs              # Library crate root (shared modules)
-│   ├── log.rs              # Shared logging sink (CLI + GUI)
+│   ├── lib.rs              # Library crate root
 │   ├── cli.rs              # Command-line argument parsing
+│   ├── log.rs              # Shared logging sink (CLI + GUI)
 │   ├── safety.rs           # Safety controls and validation
-│   ├── syscall.rs          # Direct syscall invocation module
-│   ├── injection/          # Process injection techniques (modular)
+│   ├── pe.rs               # Shared PE helpers (exports, .text, pattern scan)
+│   ├── process.rs          # Process enumeration + filtering
+│   ├── tests.rs            # Integration tests (113 tests)
+│   │
+│   ├── analysis/           # Hook detection & restoration
+│   │   ├── mod.rs
+│   │   ├── detect.rs       # Hook detection (ReadProcessMemory + classify)
+│   │   └── unhook.rs       # API unhooking (Direct Byte, Trampoline, Inline)
+│   │
+│   ├── evasion/            # EDR evasion techniques
+│   │   ├── mod.rs
+│   │   ├── etw.rs          # ETW patching (blind EDR telemetry)
+│   │   ├── amsi.rs         # AMSI bypass (patch AmsiScanBuffer)
+│   │   ├── ppid.rs         # PPID spoofing (fake parent process)
+│   │   ├── sleep_obfs.rs   # Sleep obfuscation (encrypt during sleep)
+│   │   └── stack_spoof.rs  # Stack spoofing (fake call frames)
+│   │
+│   ├── syscall/            # Syscall invocation
+│   │   ├── mod.rs          # SSN table + direct invocation
+│   │   └── indirect.rs     # Hell's Gate / Halo's Gate
+│   │
+│   ├── payload/            # Payload handling
+│   │   ├── mod.rs
+│   │   ├── format.rs       # Byte format converter + hex dump
+│   │   ├── encrypt.rs      # Shellcode encryption (XOR/RC4 + PIC stubs)
+│   │   └── generate.rs     # Shellcode generator (PEB walk + template patch)
+│   │
+│   ├── injection/          # Process injection (7 techniques)
 │   │   ├── mod.rs          # Types, dispatch, dry-run docs
 │   │   ├── common.rs       # Shared helpers (write_remote_payload, cleanup)
 │   │   ├── wrappers.rs     # APC + hijack trampoline builders
-│   │   ├── crt.rs          # CreateRemoteThread technique
-│   │   ├── apc.rs          # APC Injection technique
-│   │   ├── hijack.rs       # Thread Hijack (SetThreadContext) technique
-│   │   ├── earlybird.rs    # Early Bird APC technique
-│   │   └── section.rs      # Section Mapping (MapViewOfFile) technique
-│   ├── generate.rs         # Shellcode generator (PEB walk + template patch)
-│   ├── payload.rs          # Byte format converter + hex dump
-│   ├── unhook.rs           # API unhooking module
-│   ├── detect.rs           # Hook detection analysis
-│   ├── tests.rs            # Integration tests
+│   │   ├── crt.rs          # CreateRemoteThread
+│   │   ├── apc.rs          # APC Injection
+│   │   ├── hijack.rs       # Thread Hijack (SetThreadContext)
+│   │   ├── earlybird.rs    # Early Bird APC
+│   │   ├── section.rs      # Section Mapping (MapViewOfFile)
+│   │   ├── callback.rs     # Callback Execution (EnumWindows)
+│   │   └── stomp.rs        # Module Stomping
+│   │
 │   ├── bin/
 │   │   ├── cli.rs          # CLI binary entry point (badang-cli)
 │   │   └── gui.rs          # GUI binary entry point (badang)
@@ -369,13 +440,10 @@ badang/
 │       ├── mod.rs          # GUI module root
 │       ├── app.rs          # egui application struct
 │       ├── theme.rs        # Dark hacker theme
-│       └── panels/         # One panel per command
-│           ├── analyze.rs
-│           ├── syscall.rs
-│           ├── inject.rs
-│           ├── load.rs
-│           ├── unhook.rs
-│           └── log_panel.rs
+│       └── panels/         # One panel per command (11 panels)
+│           ├── analyze.rs, syscall.rs, inject.rs, load.rs,
+│           ├── unhook.rs, etw.rs, amsi.rs, ppid.rs,
+│           ├── sleep.rs, spoof.rs, scan.rs, log_panel.rs
 ├── target/                 # Build output (gitignored)
 └── README.md               # This file
 ```

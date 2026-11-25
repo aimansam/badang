@@ -2,6 +2,8 @@
 // Direct syscall invocation to bypass user-mode API hooks
 // For authorized security research only.
 
+pub mod indirect;
+
 use crate::log::LogSink;
 
 #[allow(dead_code)]
@@ -207,7 +209,7 @@ pub fn analyze(func_name: &str, log: &LogSink) {
         log.detail(format!("    syscall               ; 0F 05"));
         log.detail(format!("    ret                   ; C3"));
     } else {
-        let hook = crate::detect::classify_hook(bytes);
+        let hook = crate::analysis::detect::classify_hook(bytes);
         match hook {
             Some(hook_type) => {
                 log.warning(format!("  HOOKED — {} detected at function entry", hook_type));

@@ -11,6 +11,8 @@ const TECHNIQUES: &[(&str, &str)] = &[
     ("hijack", "Thread Hijack (SetThreadContext)"),
     ("earlybird", "Early Bird APC"),
     ("section", "Section Mapping (MapViewOfFile)"),
+    ("callback", "Callback Execution (EnumWindows)"),
+    ("stomp", "Module Stomping"),
 ];
 
 #[derive(Default)]
@@ -139,9 +141,9 @@ pub fn draw(
     {
         state.error.clear();
         let technique_key = TECHNIQUES[state.selected_technique].0;
-        let is_earlybird = technique_key == "earlybird";
+        let no_pid = matches!(technique_key, "earlybird" | "callback" | "stomp");
 
-        let pid = if is_earlybird {
+        let pid = if no_pid {
             0
         } else {
             match state.pid_input.trim().parse::<u32>() {
@@ -152,7 +154,7 @@ pub fn draw(
                 }
             }
         };
-        if !is_earlybird {
+        if !no_pid {
             if let Err(e) = crate::safety::validate_target(pid) {
                 state.error = e;
                 return;
@@ -160,9 +162,9 @@ pub fn draw(
         }
 
         if *dry_run {
-            if is_earlybird {
+            if no_pid {
                 log.step(format!(
-                    "[DRY RUN] Would spawn suspended process using technique {}",
+                    "[DRY RUN] Would execute locally using technique {}",
                     technique_key
                 ));
             } else {
@@ -199,8 +201,8 @@ pub fn draw(
                 payload_path,
                 shellcode.len()
             ));
-            if is_earlybird {
-                log.info("  Mode: spawns a new suspended process (PID not required)");
+            if no_pid {
+                log.info("  Mode: local execution (PID not required)");
             } else {
                 log.info(format!("  Target PID: {}", pid));
             }

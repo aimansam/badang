@@ -1,7 +1,12 @@
+pub mod amsi;
 pub mod analyze;
+pub mod etw;
 pub mod inject;
 pub mod load;
+pub mod ppid;
 pub mod log_panel;
 pub mod scan;
+pub mod sleep;
+pub mod spoof;
 pub mod syscall;
 pub mod unhook;

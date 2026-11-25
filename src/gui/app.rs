@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::gui::panels::{analyze, inject, load, log_panel, scan, syscall, unhook};
+use crate::gui::panels::{amsi, analyze, etw, inject, load, log_panel, ppid, scan, sleep, spoof, syscall, unhook};
 use crate::gui::theme;
 use crate::log::{LogEntry, LogSink};
 
@@ -12,6 +12,11 @@ enum Tab {
     Inject,
     Load,
     Unhook,
+    Etw,
+    Amsi,
+    Ppid,
+    Sleep,
+    Spoof,
 }
 
 pub struct BadangApp {
@@ -28,6 +33,11 @@ pub struct BadangApp {
     load_state: load::LoadState,
     scan_state: scan::ScanState,
     unhook_state: unhook::UnhookState,
+    etw_state: etw::EtwState,
+    amsi_state: amsi::AmsiState,
+    ppid_state: ppid::PpidState,
+    sleep_state: sleep::SleepState,
+    spoof_state: spoof::SpoofState,
 
     theme_applied: bool,
 }
@@ -48,6 +58,11 @@ impl BadangApp {
             load_state: load::LoadState::default(),
             scan_state: scan::ScanState::default(),
             unhook_state: unhook::UnhookState::default(),
+            etw_state: etw::EtwState::default(),
+            amsi_state: amsi::AmsiState::default(),
+            ppid_state: ppid::PpidState::default(),
+            sleep_state: sleep::SleepState::default(),
+            spoof_state: spoof::SpoofState::default(),
 
             theme_applied: false,
         }
@@ -80,6 +95,11 @@ impl eframe::App for BadangApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Inject, "Inject");
                 ui.selectable_value(&mut self.active_tab, Tab::Load, "Load");
                 ui.selectable_value(&mut self.active_tab, Tab::Unhook, "Unhook");
+                ui.selectable_value(&mut self.active_tab, Tab::Etw, "ETW");
+                ui.selectable_value(&mut self.active_tab, Tab::Amsi, "AMSI");
+                ui.selectable_value(&mut self.active_tab, Tab::Ppid, "PPID");
+                ui.selectable_value(&mut self.active_tab, Tab::Sleep, "Sleep");
+                ui.selectable_value(&mut self.active_tab, Tab::Spoof, "Spoof");
             });
         });
 
@@ -138,6 +158,21 @@ impl eframe::App for BadangApp {
             }
             Tab::Unhook => {
                 unhook::draw(ui, &mut self.unhook_state, &mut self.dry_run, &self.log_sink);
+            }
+            Tab::Etw => {
+                etw::draw(ui, &mut self.etw_state, &mut self.dry_run, &self.log_sink);
+            }
+            Tab::Amsi => {
+                amsi::draw(ui, &mut self.amsi_state, &mut self.dry_run, &self.log_sink);
+            }
+            Tab::Ppid => {
+                ppid::draw(ui, &mut self.ppid_state, &mut self.dry_run, &self.log_sink);
+            }
+            Tab::Sleep => {
+                sleep::draw(ui, &mut self.sleep_state, &mut self.dry_run, &self.log_sink);
+            }
+            Tab::Spoof => {
+                spoof::draw(ui, &mut self.spoof_state, &mut self.dry_run, &self.log_sink);
             }
         });
     }

@@ -60,9 +60,9 @@ pub fn draw(ui: &mut egui::Ui, state: &mut UnhookState, dry_run: &mut bool, log:
         let func = COMMON_APIS[state.selected];
         if *dry_run {
             log.step(format!("[DRY RUN] Would unhook API: {}", func));
-            crate::unhook::dry_run(func, log);
+            crate::analysis::unhook::dry_run(func, log);
         } else {
-            crate::unhook::analyze(func, log);
+            crate::analysis::unhook::analyze(func, log);
         }
     }
 }

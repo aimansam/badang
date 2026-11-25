@@ -1,9 +1,9 @@
 use eframe::egui;
 
-use crate::generate::{self, PayloadType};
+use crate::payload::generate::{self, PayloadType};
 use crate::gui::theme;
 use crate::log::LogSink;
-use crate::payload::{self, PayloadFormat};
+use crate::payload::format::{self as payload_fmt, PayloadFormat};
 
 #[derive(PartialEq, Clone, Copy)]
 enum LoadMode {
@@ -113,7 +113,7 @@ fn draw_file_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
                         &bytes[..bytes.len().min(16)]
                     ));
                     log.info("       (payload loaded successfully)");
-                    log.detail(format!("\n{}", payload::hex_dump(&bytes)));
+                    log.detail(format!("\n{}", payload_fmt::hex_dump(&bytes)));
                 }
                 Err(e) => {
                     state.error = e;
@@ -176,14 +176,14 @@ fn draw_convert_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
             if state.input_text.trim().is_empty() {
                 state.convert_error = "Paste shellcode bytes above".to_string();
             } else if state.auto_detect {
-                match payload::auto_parse(&state.input_text) {
+                match payload_fmt::auto_parse(&state.input_text) {
                     Ok((bytes, fmt)) => {
                         log.step(format!(
                             "[CONVERT] Parsed {} bytes (detected format: {})",
                             bytes.len(),
                             fmt.name()
                         ));
-                        log.detail(format!("\n{}", payload::hex_dump(&bytes)));
+                        log.detail(format!("\n{}", payload_fmt::hex_dump(&bytes)));
                         state.converted_bytes = Some(bytes);
                     }
                     Err(e) => {
@@ -192,14 +192,14 @@ fn draw_convert_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
                 }
             } else {
                 let fmt = PayloadFormat::all()[state.format_idx];
-                match payload::parse(&state.input_text, fmt) {
+                match payload_fmt::parse(&state.input_text, fmt) {
                     Ok(bytes) => {
                         log.step(format!(
                             "[CONVERT] Parsed {} bytes (format: {})",
                             bytes.len(),
                             fmt.name()
                         ));
-                        log.detail(format!("\n{}", payload::hex_dump(&bytes)));
+                        log.detail(format!("\n{}", payload_fmt::hex_dump(&bytes)));
                         state.converted_bytes = Some(bytes);
                     }
                     Err(e) => {
@@ -309,7 +309,7 @@ fn draw_generate_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
                         selected.name(),
                         bytes.len()
                     ));
-                    log.detail(format!("\n{}", payload::hex_dump(&bytes)));
+                    log.detail(format!("\n{}", payload_fmt::hex_dump(&bytes)));
                     state.generated_bytes = Some(bytes);
                 }
                 Err(e) => {
@@ -366,17 +366,17 @@ fn draw_output_buttons(
         }
 
         if ui.button("Copy as C").clicked() {
-            ui.ctx().copy_text(payload::to_c_array(bytes));
+            ui.ctx().copy_text(payload_fmt::to_c_array(bytes));
             log.info("[COPY] C array copied to clipboard");
         }
 
         if ui.button("Copy as Python").clicked() {
-            ui.ctx().copy_text(payload::to_python_bytes(bytes));
+            ui.ctx().copy_text(payload_fmt::to_python_bytes(bytes));
             log.info("[COPY] Python bytes copied to clipboard");
         }
 
         if ui.button("Copy as Rust").clicked() {
-            ui.ctx().copy_text(payload::to_rust_array(bytes));
+            ui.ctx().copy_text(payload_fmt::to_rust_array(bytes));
             log.info("[COPY] Rust array copied to clipboard");
         }
     }

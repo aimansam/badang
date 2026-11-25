@@ -51,10 +51,10 @@ pub fn draw(ui: &mut egui::Ui, state: &mut AnalyzeState, dry_run: &mut bool, log
                     state.error = e;
                 } else if *dry_run {
                     log.step(format!("[DRY RUN] Would analyze process PID {}", pid));
-                    crate::detect::dry_run(pid, log);
+                    crate::analysis::detect::dry_run(pid, log);
                 } else {
                     log.step(format!("[LIVE] Scanning process PID {} for hooks...", pid));
-                    crate::detect::analyze(pid, log);
+                    crate::analysis::detect::analyze(pid, log);
                 }
             }
             Err(_) => {

@@ -79,7 +79,7 @@ pub fn analyze(func_name: &str, log: &LogSink) {
         .join(" ");
     log.info(format!("  Current bytes: {}", hex_str));
 
-    let hook = crate::detect::classify_hook(bytes);
+    let hook = crate::analysis::detect::classify_hook(bytes);
 
     match hook {
         Some(hook_type) => {
