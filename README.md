@@ -114,14 +114,20 @@ Badang includes syscall numbers for the following NT APIs (Windows 10 22H2 x64 r
 
 ## Windows Defender
 
-Windows Defender **will flag this project** as malicious — this is expected for security research toolkits. Add an exclusion before building:
+Badang **bypasses Windows Defender static analysis** out of the box — no exclusions needed to run the compiled binary. Four evasion layers work together:
 
-```powershell
-# Run as Administrator
-Add-MpPreference -ExclusionPath "C:\path\to\badang"
-```
+| Layer | What it does |
+|-------|-------------|
+| **XOR String Obfuscation** | All sensitive strings (API names, DLL names, patch bytes, syscall patterns, shellcode templates) encrypted at compile time with an 8-byte XOR key and decrypted at runtime |
+| **Dynamic API Resolution** | Only `GetModuleHandleA` + `GetProcAddress` in the IAT — all other Win32 APIs resolved at runtime via encrypted names. Zero injection/evasion APIs visible in imports |
+| **String Sanitization** | All user-facing strings stripped of keywords Defender's ML flags (`shellcode`, `inject`, `evasion`, `hook`, `bypass`, `EDR`, `malware`). Win32 API names removed from error messages |
+| **PE Metadata** | Version info, company name, application manifest, and icon embedded via `winresource` — the binary looks like a normal application to heuristic scanners |
 
-See [docs/build.md](docs/build.md#windows-defender-exclusions) for restore instructions and alternatives.
+The release profile (`strip = true`, `lto = true`, `opt-level = 3`, `codegen-units = 1`, `panic = "abort"`) further reduces the attack surface by stripping symbols and maximizing optimization.
+
+> **Note:** You may still need Defender exclusions for the **source code** directory during development, since raw shellcode templates in the source files can trigger real-time scanning. See [docs/build.md](docs/build.md#windows-defender-exclusions) for instructions.
+
+See [docs/features.md](docs/features.md#static-analysis-evasion) and [docs/build.md](docs/build.md#string-obfuscation-srcobfrs) for full technical details.
 
 ---
 
