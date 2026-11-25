@@ -93,7 +93,29 @@ The `windows` crate was removed entirely. All 20+ modules use `crate::resolve::*
 **Before:** 98 KERNEL32.dll IAT entries (full injection API set flagged by ML)
 **After:** ~50 entries (standard CRT only, zero injection/evasion APIs)
 
-Combined with XOR string obfuscation (`src/obf.rs`) and PE metadata embedding (`build.rs`), the binary presents a clean static profile to signature and ML-based scanners.
+Combined with XOR string obfuscation (`src/obf.rs`), string sanitization, and PE metadata embedding (`build.rs`), the binary presents a clean static profile to signature and ML-based scanners.
+
+## Static Analysis Evasion
+
+Four layers work together to defeat Defender's static/ML scanner:
+
+### 1. Multi-byte XOR String Obfuscation (`src/obf.rs`)
+
+All sensitive strings are encrypted at compile time with an 8-byte XOR key (`[0xD3, 0x7A, 0x91, 0xE5, 0x2F, 0xB8, 0x64, 0x1C]`) and decrypted at runtime. This covers API names, DLL names, patch bytes, syscall patterns, and shellcode templates. Functions: `obf::s()` (string), `obf::b()` (byte vec), `obf::ba()` (fixed array), `obf::byte()` (single byte).
+
+### 2. Dynamic API Resolution (`src/resolve.rs`)
+
+All Win32 API calls go through runtime resolution instead of static imports. Only `GetModuleHandleA` and `GetProcAddress` appear in the IAT. The 20+ modules call `crate::resolve::VirtualAlloc()` etc. which resolve the real function pointer on first call using XOR-encrypted names from `obf.rs`.
+
+### 3. String Sanitization (all source files)
+
+All user-facing strings — help text, error messages, step annotations, GUI labels — are stripped of offensive keywords that Defender's ML flags: `shellcode`, `inject`, `evasion`, `hook`, `bypass`, `EDR`, `malware`. Win32 API names are removed from error messages (`CreateRemoteThread failed` → `remote thread creation failed`). Technique names use short neutral labels (`CRT`, `Section Map`, `Module Overwrite`).
+
+### 4. PE Metadata (`build.rs`)
+
+The build script embeds a Windows application manifest, version info (CompanyName, FileDescription, etc.), and an application icon via `winresource`. This makes the binary look like a normal application to heuristic scanners that check for missing metadata.
+
+**Release profile** (`Cargo.toml`): `opt-level = 3`, `strip = true`, `lto = true`, `codegen-units = 1`, `panic = "abort"` — maximum optimization + no symbols.
 
 ## PE Helpers
 

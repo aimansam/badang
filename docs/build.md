@@ -42,7 +42,7 @@ cargo test
 | | generate | `src/payload/generate.rs` | Shellcode generator (PEB walk + template patch) |
 | **injection/** | — | `src/injection/` | Process injection (7 techniques) |
 | **root** | resolve | `src/resolve.rs` | Dynamic API resolution (runtime IAT bypass) |
-| | obf | `src/obf.rs` | XOR-encrypted strings + API names (key 0x4B) |
+| | obf | `src/obf.rs` | XOR-encrypted strings + API names (8-byte key) |
 | | pe | `src/pe.rs` | Shared PE helpers (exports, .text, pattern scan) |
 | | process | `src/process.rs` | Process enumeration (ToolHelp snapshot) |
 | | cli | `src/cli.rs` | Argument parsing |
@@ -114,7 +114,11 @@ Raw u32 constants replace windows crate newtypes (MEM_COMMIT=0x1000, PAGE_READWR
 
 **Adding a new Win32 API to the resolver:**
 
-1. Encrypt the function name: `python3 -c "print([hex(b ^ 0x4B) for b in b'NewFunctionName'])"`
+1. Encrypt the function name:
+   ```python
+   K=[0xd3,0x7a,0x91,0xe5,0x2f,0xb8,0x64,0x1c]
+   print([hex(b^K[i%len(K)]) for i,b in enumerate(b'NewFunctionName')])
+   ```
 2. Add the encrypted const to `src/obf.rs` (in the Win32 API names section, with `W_` prefix)
 3. Add a wrapper function to `src/resolve.rs` following the existing pattern:
    ```rust
@@ -177,7 +181,9 @@ The binary embeds version info and a manifest via `winresource` to improve reput
 
 ## String Obfuscation (`src/obf.rs`)
 
-The release binary uses compile-time XOR obfuscation to prevent static AV signature matching. All sensitive data is stored encrypted and decrypted at runtime.
+The release binary uses compile-time multi-byte XOR obfuscation to prevent static AV signature matching. All sensitive data is stored encrypted and decrypted at runtime.
+
+**XOR key:** 8-byte key `[0xD3, 0x7A, 0x91, 0xE5, 0x2F, 0xB8, 0x64, 0x1C]` defined in `src/obf.rs`.
 
 **What's encrypted:**
 - API function names (Nt\*, AMSI, ETW targets)
@@ -187,16 +193,24 @@ The release binary uses compile-time XOR obfuscation to prevent static AV signat
 - Shellcode templates (PEB walking, find\_function, get\_data\_ptr, all main payloads)
 
 **What's NOT encrypted (intentionally):**
-- Display-only strings in help text and dry\_run descriptions — not part of AV signatures
+- Display-only strings in help text and dry\_run descriptions — sanitized to remove offensive keywords instead
 - Linker directives (`#[link(name = "...")]`) — unavoidable in PE imports
 - Match arms in `from_str()` — lowercase user-input patterns, not API signatures
 
 **Adding new sensitive strings:**
 
-1. XOR each byte with `0x4B`: `python3 -c "print([hex(b ^ 0x4B) for b in b'YourString'])"`
+1. Encrypt with the 8-byte key:
+   ```python
+   K=[0xd3,0x7a,0x91,0xe5,0x2f,0xb8,0x64,0x1c]
+   print([hex(b^K[i%len(K)]) for i,b in enumerate(b'YourString')])
+   ```
 2. Add the encrypted const to `src/obf.rs`
 3. Use `obf::s()` for strings, `obf::b()` for byte vecs, `obf::ba()` for fixed arrays
 4. Never put the plaintext form in non-test Rust code
+
+**String sanitization (all source files):**
+
+All display strings — help text, error messages, step annotations, GUI labels — are stripped of keywords flagged by Defender's ML: `shellcode`, `inject`, `evasion`, `hook`, `bypass`, `EDR`, `malware`. Win32 API names are removed from error messages (e.g. `CreateRemoteThread failed` → `remote thread creation failed`).
 
 **Release profile** (in `Cargo.toml`) complements obfuscation:
 - `opt-level = 3` — aggressive optimization removes dead code paths
