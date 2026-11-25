@@ -26,7 +26,7 @@
 Badang (named after the Malaysian folk hero known for supernatural strength) is a research toolkit that demonstrates techniques used to bypass or evade Endpoint Detection and Response (EDR) systems on Windows. It covers:
 
 1. **Direct Syscall Invocation** — Bypassing user-mode API hooks by calling kernel functions directly via the `syscall` instruction
-2. **Process Injection Techniques** — Methods for injecting code into other processes (CreateRemoteThread, APC, Thread Hijack)
+2. **Process Injection Techniques** — 5 methods for injecting code into other processes (CreateRemoteThread, APC, Thread Hijack, Early Bird, Section Mapping)
 3. **API Unhooking** — Restoring original function bytes to neutralize EDR hooks
 4. **Hook Detection Analysis** — Identifying which APIs have been hooked by security software
 
@@ -39,7 +39,7 @@ Each technique includes detailed documentation of how it works, why it can bypas
 | Module | Description |
 |--------|-------------|
 | **Syscall** | Direct syscall invocation with Windows syscall number reference table (13 NT APIs) |
-| **Injection** | 3 live process injection techniques: CreateRemoteThread, APC Injection, Thread Hijack (SetThreadContext) |
+| **Injection** | 5 live process injection techniques: CreateRemoteThread, APC, Thread Hijack, Early Bird APC, Section Mapping |
 | **Unhook** | API unhooking via memory comparison and byte restoration |
 | **Detect** | Hook detection analysis — identify hooked APIs in target processes |
 | **Safety** | Built-in safety controls: `--dry-run` mode, `--pid` required, system process protection, payload verification |
@@ -224,6 +224,8 @@ badang-cli.exe load --payload shellcode.bin
 badang-cli.exe inject --pid 1234 --technique createremote --payload shellcode.bin --execute --confirm
 badang-cli.exe inject --pid 1234 --technique apc --payload shellcode.bin -x -c
 badang-cli.exe inject --pid 1234 --technique hijack --payload shellcode.bin -x -c
+badang-cli.exe inject --technique earlybird --payload shellcode.bin -x -c          # no PID needed
+badang-cli.exe inject --pid 1234 --technique section --payload shellcode.bin -x -c
 
 # API unhooking demonstration (DRY RUN)
 badang-cli.exe unhook --func NtCreateFile
@@ -235,7 +237,7 @@ badang-cli.exe unhook --func NtCreateFile
 |---------|-------------|------------------|
 | `analyze` | Detect hooked APIs in a target process | Yes |
 | `syscall` | Invoke a function via direct syscall | No |
-| `inject` | Process injection (CreateRemoteThread / APC / Thread Hijack) | Yes |
+| `inject` | Process injection (5 techniques — see below) | Depends |
 | `unhook` | Demonstrate API unhooking | No |
 | `generate` | Generate shellcode payload (exec/msgbox/reverse/bind) | No |
 | `convert` | Convert shellcode between formats | No |
@@ -287,11 +289,25 @@ This skips the hooked `ntdll.dll` entirely, going straight from user-mode to ker
 
 ### Process Injection
 
-Badang implements 3 live injection techniques (all operational with `--execute --confirm`):
+Badang implements 5 live injection techniques (all operational with `--execute --confirm`):
 
-1. **CreateRemoteThread** — Allocate + write shellcode in target process, create remote thread to execute it. Classic 6-step pipeline: OpenProcess → VirtualAllocEx → WriteProcessMemory → VirtualProtectEx → CreateRemoteThread → WaitForSingleObject.
-2. **APC Injection** — Wrap shellcode in a callee-save trampoline, write to target, enumerate threads via ToolHelp, queue APC to all threads. Executes when a thread enters an alertable wait state. No new thread created.
-3. **Thread Hijack (SetThreadContext)** — Suspend an existing thread, save full register context (all GPRs + RFLAGS), redirect RIP to shellcode wrapped in a full-register-save trampoline with completion flag. Poll for completion, then restore original context so the thread continues normally. No new thread, no APC — hardest to detect.
+| # | Technique | Key Evasion Angle | PID Required |
+|---|-----------|-------------------|--------------|
+| 1 | **CreateRemoteThread** | Classic baseline — allocate, write, create remote thread | Yes |
+| 2 | **APC Injection** | No new thread created — queues APC to existing threads | Yes |
+| 3 | **Thread Hijack (SetThreadContext)** | No new thread, no APC — hijacks existing thread's RIP | Yes |
+| 4 | **Early Bird APC** | Runs before EDR hooks install — spawns suspended process | No |
+| 5 | **Section Mapping (MapViewOfFile)** | `WriteProcessMemory` never called — uses shared memory section | Yes |
+
+**CreateRemoteThread**: 6-step pipeline — OpenProcess → VirtualAllocEx → WriteProcessMemory → VirtualProtectEx → CreateRemoteThread → WaitForSingleObject.
+
+**APC Injection**: Wraps shellcode in a callee-save trampoline, writes to target, enumerates threads via ToolHelp, queues APC to all threads. Executes when a thread enters an alertable wait state.
+
+**Thread Hijack**: Suspends a thread, saves full CONTEXT (all GPRs + RFLAGS), redirects RIP to shellcode in a full-register-save trampoline with completion flag. Polls flag, then restores original context so the thread continues normally.
+
+**Early Bird APC**: Creates a new process with `CREATE_SUSPENDED`, writes shellcode, queues APC to the main thread, then resumes. The APC fires during process initialization — before EDR user-mode hooks are installed.
+
+**Section Mapping**: Creates a shared memory section via `CreateFileMappingW`, maps it locally to write shellcode (`memcpy`, not `WriteProcessMemory`), then maps the same section into the target process via `MapViewOfFileNuma2` as `PAGE_EXECUTE_READ`. EDR hooks on `WriteProcessMemory` see nothing.
 
 ### API Unhooking
 
@@ -332,7 +348,15 @@ badang/
 │   ├── cli.rs              # Command-line argument parsing
 │   ├── safety.rs           # Safety controls and validation
 │   ├── syscall.rs          # Direct syscall invocation module
-│   ├── injection.rs        # Process injection (CRT, APC, Thread Hijack)
+│   ├── injection/          # Process injection techniques (modular)
+│   │   ├── mod.rs          # Types, dispatch, dry-run docs
+│   │   ├── common.rs       # Shared helpers (write_remote_payload, cleanup)
+│   │   ├── wrappers.rs     # APC + hijack trampoline builders
+│   │   ├── crt.rs          # CreateRemoteThread technique
+│   │   ├── apc.rs          # APC Injection technique
+│   │   ├── hijack.rs       # Thread Hijack (SetThreadContext) technique
+│   │   ├── earlybird.rs    # Early Bird APC technique
+│   │   └── section.rs      # Section Mapping (MapViewOfFile) technique
 │   ├── generate.rs         # Shellcode generator (PEB walk + template patch)
 │   ├── payload.rs          # Byte format converter + hex dump
 │   ├── unhook.rs           # API unhooking module

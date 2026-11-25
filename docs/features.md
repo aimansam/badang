@@ -14,11 +14,15 @@ Calls the kernel directly using raw syscall numbers, bypassing ntdll hooks entir
 
 ## Inject (Process Injection)
 
-Three live injection techniques (all operational with `-x -c`):
+Five live injection techniques (all operational with `-x -c`):
 
 - **CreateRemoteThread** — allocate + write + create thread. 6-step pipeline: OpenProcess → VirtualAllocEx → WriteProcessMemory → VirtualProtectEx → CreateRemoteThread → WaitForSingleObject. Simplest, most detected.
 - **APC Injection** — wraps shellcode in callee-save trampoline (preserves rbx/rbp/rsi/rdi/r12-r15), writes to target, enumerates threads via ToolHelp, queues APC to all threads. Executes when a thread enters alertable wait. No new thread created.
-- **Thread Hijack (SetThreadContext)** — suspends an existing thread, saves full CONTEXT (all GPRs + RFLAGS), redirects RIP to shellcode in a full-register-save trampoline with completion flag. Polls flag via ReadProcessMemory, then restores original context so the thread continues normally. No new thread, no APC — hardest to detect.
+- **Thread Hijack (SetThreadContext)** — suspends an existing thread, saves full CONTEXT (all GPRs + RFLAGS), redirects RIP to shellcode in a full-register-save trampoline with completion flag. Polls flag via ReadProcessMemory, then restores original context so the thread continues normally. No new thread, no APC.
+- **Early Bird APC** — creates a new process with CREATE_SUSPENDED, writes shellcode, queues APC to the main thread, then resumes. The APC fires during process initialization before EDR user-mode hooks are installed. No PID required.
+- **Section Mapping (MapViewOfFile)** — creates a shared memory section (CreateFileMappingW), maps locally to write shellcode via memcpy, maps same section into target via MapViewOfFileNuma2 as PAGE_EXECUTE_READ. WriteProcessMemory is never called — EDR hooks on it see nothing. Requires Windows 10 1703+.
+
+Each technique is in its own file under `src/injection/`.
 
 ## Unhook (API Restoration)
 

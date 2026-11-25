@@ -17,7 +17,7 @@ Enter a PID. Click **"Switch to Live"** to leave dry-run mode. Click **Analyze**
 Select an NT function from the dropdown. Shows syscall number info (dry run) or invokes directly (live).
 
 ### Inject
-Enter PID, select technique (CreateRemoteThread / APC / Thread Hijack), load payload. Requires live mode + Confirm.
+Select technique from dropdown (CreateRemoteThread / APC / Thread Hijack / Early Bird APC / Section Mapping), load payload. Enter PID for most techniques; Early Bird spawns its own process so PID is not required. Requires live mode + Confirm.
 
 ### Load
 Three sub-tabs:

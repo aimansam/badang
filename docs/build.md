@@ -30,7 +30,7 @@ cargo test
 |--------|------|---------|
 | detect | `src/detect.rs` | Hook detection (ReadProcessMemory + classify) |
 | syscall | `src/syscall.rs` | Syscall number table + direct invocation |
-| injection | `src/injection.rs` | Process injection (CRT, APC, Thread Hijack) |
+| injection | `src/injection/` | Process injection (CRT, APC, Hijack, Early Bird, Section) |
 | unhook | `src/unhook.rs` | API unhooking (Direct Byte, Trampoline, Inline) |
 | generate | `src/generate.rs` | Shellcode generator (PEB walk + template patch) |
 | payload | `src/payload.rs` | Byte format converter + hex dump |

