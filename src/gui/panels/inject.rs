@@ -10,6 +10,7 @@ const TECHNIQUES: &[(&str, &str)] = &[
     ("apc", "APC Injection"),
     ("hijack", "Thread Hijack (SetThreadContext)"),
     ("earlybird", "Early Bird APC"),
+    ("section", "Section Mapping (MapViewOfFile)"),
 ];
 
 #[derive(Default)]

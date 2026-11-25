@@ -94,6 +94,19 @@ fn test_injection_technique_from_str() {
         InjectionTechnique::from_str("early-bird"),
         Some(InjectionTechnique::EarlyBird)
     );
+    // Existing variant: SectionMapping
+    assert_eq!(
+        InjectionTechnique::from_str("section"),
+        Some(InjectionTechnique::SectionMapping)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("mapview"),
+        Some(InjectionTechnique::SectionMapping)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("ntmapviewofsection"),
+        Some(InjectionTechnique::SectionMapping)
+    );
     // Unknown strings return None
     assert!(InjectionTechnique::from_str("").is_none());
     assert!(InjectionTechnique::from_str("nonexistent").is_none());
@@ -112,6 +125,9 @@ fn test_injection_technique_name() {
 
     let eb = InjectionTechnique::EarlyBird;
     assert_eq!(eb.name(), "Early Bird APC");
+
+    let sm = InjectionTechnique::SectionMapping;
+    assert_eq!(sm.name(), "Section Mapping (MapViewOfFile)");
 }
 
 #[test]
@@ -421,6 +437,7 @@ fn test_all_techniques_dispatch() {
         InjectionTechnique::APC,
         InjectionTechnique::ThreadHijack,
         InjectionTechnique::EarlyBird,
+        InjectionTechnique::SectionMapping,
     ] {
         let err = crate::injection::live_inject(1234, technique, &[0x90, 0x90], &log)
             .expect_err("should fail on non-Windows or with invalid PID");
