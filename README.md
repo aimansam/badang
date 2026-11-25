@@ -112,6 +112,19 @@ Badang includes syscall numbers for the following NT APIs (Windows 10 22H2 x64 r
 
 ---
 
+## Windows Defender
+
+Windows Defender **will flag this project** as malicious — this is expected for security research toolkits. Add an exclusion before building:
+
+```powershell
+# Run as Administrator
+Add-MpPreference -ExclusionPath "C:\path\to\badang"
+```
+
+See [docs/build.md](docs/build.md#windows-defender-exclusions) for restore instructions and alternatives.
+
+---
+
 ## Quickstart
 
 ### Build and Run (5 minutes)

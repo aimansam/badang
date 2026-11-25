@@ -47,6 +47,46 @@ cargo test
 | | log | `src/log.rs` | Shared log sink (CLI → stderr, GUI → panel) |
 | | gui/ | `src/gui/` | GUI app, theme, 11 panels |
 
+## Windows Defender Exclusions
+
+Windows Defender will flag this project (source and binaries) as malicious due to shellcode templates, syscall patterns, and injection API references. This is expected for security research toolkits.
+
+**Add exclusions before building** (run PowerShell as Administrator):
+
+```powershell
+# Exclude the project directory (source + build output)
+Add-MpPreference -ExclusionPath "C:\path\to\badang"
+
+# Or exclude just the binaries
+Add-MpPreference -ExclusionPath "C:\path\to\badang\target"
+
+# Verify exclusions
+Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
+```
+
+**If Defender already quarantined files**, restore them first:
+
+```powershell
+# List quarantined items
+Get-MpThreat
+
+# Restore all quarantined items
+Get-MpThreat | ForEach-Object { Remove-MpThreat -ThreatID $_.ThreatID }
+
+# Or use Defender UI: Windows Security → Virus & threat protection
+#   → Protection history → Quarantined items → Restore
+```
+
+**Alternative: temporarily disable real-time protection** (not recommended long-term):
+
+```powershell
+Set-MpPreference -DisableRealtimeMonitoring $true
+# Build, test, etc.
+Set-MpPreference -DisableRealtimeMonitoring $false
+```
+
+> **Note:** These exclusions are only for your development machine. Never disable Defender on production systems. If cross-compiling from Linux, Defender is not an issue.
+
 ## Safety Model
 
 - Dry-run mode ON by default — no execution
