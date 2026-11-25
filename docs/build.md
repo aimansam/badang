@@ -87,6 +87,37 @@ Set-MpPreference -DisableRealtimeMonitoring $false
 
 > **Note:** These exclusions are only for your development machine. Never disable Defender on production systems. If cross-compiling from Linux, Defender is not an issue.
 
+## Dynamic API Resolution (`src/resolve.rs`)
+
+All suspicious Win32 API calls (VirtualAlloc, WriteProcessMemory, CreateRemoteThread, OpenProcess, etc.) are resolved at runtime instead of appearing in the Import Address Table (IAT). This eliminates the primary static detection signal that Defender's ML model uses.
+
+**How it works:**
+- Only two bootstrap functions remain in the IAT: `GetModuleHandleA` and `GetProcAddress` (every legitimate binary imports these)
+- All other APIs are resolved at runtime via encrypted names from `obf.rs`
+- The `windows` crate dependency was removed entirely — zero function imports from it
+- Raw `#[link(name = "kernel32")]` extern blocks are used only for the two bootstrap functions
+
+**Before:** 98 KERNEL32.dll IAT entries including the full injection API set
+**After:** ~50 entries (all standard CRT functions) — zero injection/evasion APIs visible
+
+**Usage pattern** (all modules follow this):
+```rust
+// Instead of:  use windows::Win32::System::Memory::VirtualAlloc;
+// Do:          use crate::resolve;
+let p = unsafe { resolve::VirtualAlloc(std::ptr::null(), size, 0x3000, 0x04) };
+```
+
+Raw u32 constants replace windows crate newtypes (MEM_COMMIT=0x1000, PAGE_READWRITE=0x04, etc.).
+
+## PE Metadata (`build.rs`)
+
+The binary embeds version info and a manifest via `winresource` to improve reputation scoring with Defender's ML model. Missing PE metadata (company name, version, manifest) lowers the reputation score and increases detection probability.
+
+**What's embedded:**
+- FileDescription, ProductName, CompanyName, FileVersion, ProductVersion
+- Application manifest with supported OS GUIDs and execution level
+- Resource section (`.rsrc`) visible in the PE structure
+
 ## String Obfuscation (`src/obf.rs`)
 
 The release binary uses compile-time XOR obfuscation to prevent static AV signature matching. All sensitive data is stored encrypted and decrypted at runtime.

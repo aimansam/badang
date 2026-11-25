@@ -92,19 +92,21 @@ pub fn print_info(log: &LogSink) {
 
 #[cfg(windows)]
 pub fn demo_manual(duration_ms: u32, log: &LogSink) -> Result<SleepDemo, String> {
-    use windows::Win32::System::Memory::{
-        VirtualAlloc, VirtualFree, VirtualProtect, MEM_COMMIT, MEM_RELEASE,
-        MEM_RESERVE, PAGE_EXECUTE_READ, PAGE_NOACCESS, PAGE_PROTECTION_FLAGS,
-        PAGE_READWRITE,
-    };
+    use crate::resolve;
 
+    const MEM_COMMIT: u32 = 0x1000;
+    const MEM_RESERVE: u32 = 0x2000;
+    const MEM_RELEASE: u32 = 0x8000;
+    const PAGE_READWRITE: u32 = 0x04;
+    const PAGE_EXECUTE_READ: u32 = 0x20;
+    const PAGE_NOACCESS: u32 = 0x01;
     const REGION_SIZE: usize = 4096;
     let xor_key: u8 = 0x5A;
 
     log.step("[1/6] VirtualAlloc(PAGE_READWRITE) — 4096 bytes".to_string());
     let alloc = unsafe {
-        VirtualAlloc(
-            None,
+        resolve::VirtualAlloc(
+            std::ptr::null(),
             REGION_SIZE,
             MEM_COMMIT | MEM_RESERVE,
             PAGE_READWRITE,
@@ -121,17 +123,21 @@ pub fn demo_manual(duration_ms: u32, log: &LogSink) -> Result<SleepDemo, String>
     }
 
     log.step("[2/6] VirtualProtect(PAGE_EXECUTE_READ) — simulate live shellcode".to_string());
-    let mut old_protect = PAGE_PROTECTION_FLAGS(0);
-    unsafe {
-        VirtualProtect(alloc, REGION_SIZE, PAGE_EXECUTE_READ, &mut old_protect)
+    let mut old_protect: u32 = 0;
+    let ok = unsafe {
+        resolve::VirtualProtect(alloc, REGION_SIZE, PAGE_EXECUTE_READ, &mut old_protect)
+    };
+    if ok == 0 {
+        return Err("VirtualProtect(RX) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect(RX) failed: {e}"))?;
 
     log.step("[3/6] Before sleep: VirtualProtect(RW) → XOR-encrypt in-place".to_string());
-    unsafe {
-        VirtualProtect(alloc, REGION_SIZE, PAGE_READWRITE, &mut old_protect)
+    let ok = unsafe {
+        resolve::VirtualProtect(alloc, REGION_SIZE, PAGE_READWRITE, &mut old_protect)
+    };
+    if ok == 0 {
+        return Err("VirtualProtect(RW) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect(RW) failed: {e}"))?;
 
     let region = unsafe { std::slice::from_raw_parts_mut(alloc as *mut u8, REGION_SIZE) };
     for byte in region.iter_mut() {
@@ -139,21 +145,23 @@ pub fn demo_manual(duration_ms: u32, log: &LogSink) -> Result<SleepDemo, String>
     }
 
     log.step("[4/6] VirtualProtect(PAGE_NOACCESS) — region is now unreadable".to_string());
-    unsafe {
-        VirtualProtect(alloc, REGION_SIZE, PAGE_NOACCESS, &mut old_protect)
+    let ok = unsafe {
+        resolve::VirtualProtect(alloc, REGION_SIZE, PAGE_NOACCESS, &mut old_protect)
+    };
+    if ok == 0 {
+        return Err("VirtualProtect(NOACCESS) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect(NOACCESS) failed: {e}"))?;
 
     log.step(format!("[5/6] Sleep({duration_ms} ms) — memory scanner sees nothing"));
-    unsafe {
-        windows::Win32::System::Threading::Sleep(duration_ms);
-    }
+    unsafe { resolve::Sleep(duration_ms) };
 
     log.step("[6/6] VirtualProtect(RW) → XOR-decrypt → VirtualProtect(RX)".to_string());
-    unsafe {
-        VirtualProtect(alloc, REGION_SIZE, PAGE_READWRITE, &mut old_protect)
+    let ok = unsafe {
+        resolve::VirtualProtect(alloc, REGION_SIZE, PAGE_READWRITE, &mut old_protect)
+    };
+    if ok == 0 {
+        return Err("VirtualProtect(RW) post-sleep failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect(RW) post-sleep failed: {e}"))?;
 
     let region = unsafe { std::slice::from_raw_parts_mut(alloc as *mut u8, REGION_SIZE) };
     for byte in region.iter_mut() {
@@ -162,20 +170,22 @@ pub fn demo_manual(duration_ms: u32, log: &LogSink) -> Result<SleepDemo, String>
 
     let restored: Vec<u8> = region.to_vec();
     if restored != test_data {
-        unsafe { let _ = VirtualFree(alloc, 0, MEM_RELEASE); }
+        unsafe { resolve::VirtualFree(alloc as *mut std::ffi::c_void, 0, MEM_RELEASE) };
         return Err("data integrity check failed after decrypt".to_string());
     }
 
-    unsafe {
-        VirtualProtect(alloc, REGION_SIZE, PAGE_EXECUTE_READ, &mut old_protect)
+    let ok = unsafe {
+        resolve::VirtualProtect(alloc, REGION_SIZE, PAGE_EXECUTE_READ, &mut old_protect)
+    };
+    if ok == 0 {
+        return Err("VirtualProtect(RX) post-decrypt failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect(RX) post-decrypt failed: {e}"))?;
 
     log.info(format!("  ✓ Sleep obfuscation demo complete at 0x{base:016X}"));
     log.detail(format!("    Region: {REGION_SIZE} bytes, slept {duration_ms} ms"));
     log.detail("    Data integrity verified — encrypt/decrypt cycle successful".to_string());
 
-    unsafe { let _ = VirtualFree(alloc, 0, MEM_RELEASE); }
+    unsafe { resolve::VirtualFree(alloc as *mut std::ffi::c_void, 0, MEM_RELEASE) };
 
     Ok(SleepDemo {
         region_base: base as u64,

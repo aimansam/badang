@@ -8,49 +8,60 @@ pub struct ProcessInfo {
 
 #[cfg(windows)]
 pub fn scan(log: &LogSink) -> Vec<ProcessInfo> {
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPPROCESS,
-    };
+    use crate::resolve;
+
+    const TH32CS_SNAPPROCESS: u32 = 0x00000002;
+    const MAX_PATH: usize = 260;
+
+    #[repr(C)]
+    struct PROCESSENTRY32 {
+        dw_size: u32,
+        cnt_usage: u32,
+        th32_process_id: u32,
+        th32_default_heap_id: usize,
+        th32_module_id: u32,
+        cnt_threads: u32,
+        th32_parent_process_id: u32,
+        pc_pri_class_base: i32,
+        dw_flags: u32,
+        sz_exe_file: [u8; MAX_PATH],
+    }
 
     log.step("[SCAN] Enumerating running processes...");
 
-    let snapshot = match unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) } {
-        Ok(h) => h,
-        Err(e) => {
-            log.error(format!("CreateToolhelp32Snapshot failed: {e}"));
-            return Vec::new();
-        }
-    };
+    let snapshot = unsafe { resolve::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    let invalid_handle = -1isize as *mut std::ffi::c_void;
+    if snapshot.is_null() || snapshot == invalid_handle {
+        log.error("CreateToolhelp32Snapshot failed");
+        return Vec::new();
+    }
 
-    let mut entry = PROCESSENTRY32 {
-        dwSize: std::mem::size_of::<PROCESSENTRY32>() as u32,
-        ..Default::default()
-    };
+    let mut entry: PROCESSENTRY32 = unsafe { std::mem::zeroed() };
+    entry.dw_size = std::mem::size_of::<PROCESSENTRY32>() as u32;
 
     let mut processes = Vec::new();
 
-    if unsafe { Process32First(snapshot, &mut entry) }.is_ok() {
+    if unsafe { resolve::Process32First(snapshot, &mut entry as *mut _ as *mut std::ffi::c_void) } != 0 {
         loop {
             let name = entry
-                .szExeFile
+                .sz_exe_file
                 .iter()
                 .take_while(|&&c| c != 0)
-                .map(|&c| c as u8 as char)
+                .map(|&c| c as char)
                 .collect::<String>();
 
             processes.push(ProcessInfo {
-                pid: entry.th32ProcessID,
+                pid: entry.th32_process_id,
                 name,
             });
 
-            if unsafe { Process32Next(snapshot, &mut entry) }.is_err() {
+            if unsafe { resolve::Process32Next(snapshot, &mut entry as *mut _ as *mut std::ffi::c_void) } == 0 {
                 break;
             }
         }
     }
 
-    let _: Result<(), _> = unsafe { CloseHandle(snapshot) };
+    unsafe { resolve::CloseHandle(snapshot) };
 
     processes.sort_by_key(|p| p.pid);
     log.info(format!("  Found {} processes", processes.len()));

