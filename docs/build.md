@@ -41,7 +41,10 @@ cargo test
 | | encrypt | `src/payload/encrypt.rs` | Shellcode encryption (XOR/RC4 + PIC stubs) |
 | | generate | `src/payload/generate.rs` | Shellcode generator (PEB walk + template patch) |
 | **injection/** | — | `src/injection/` | Process injection (7 techniques) |
-| **root** | pe | `src/pe.rs` | Shared PE helpers (exports, .text, pattern scan) |
+| **root** | resolve | `src/resolve.rs` | Dynamic API resolution (runtime IAT bypass) |
+| | obf | `src/obf.rs` | XOR-encrypted strings + API names (key 0x4B) |
+| | pe | `src/pe.rs` | Shared PE helpers (exports, .text, pattern scan) |
+| | process | `src/process.rs` | Process enumeration (ToolHelp snapshot) |
 | | cli | `src/cli.rs` | Argument parsing |
 | | safety | `src/safety.rs` | Execution mode checks, PID validation |
 | | log | `src/log.rs` | Shared log sink (CLI → stderr, GUI → panel) |
@@ -108,6 +111,60 @@ let p = unsafe { resolve::VirtualAlloc(std::ptr::null(), size, 0x3000, 0x04) };
 ```
 
 Raw u32 constants replace windows crate newtypes (MEM_COMMIT=0x1000, PAGE_READWRITE=0x04, etc.).
+
+**Adding a new Win32 API to the resolver:**
+
+1. Encrypt the function name: `python3 -c "print([hex(b ^ 0x4B) for b in b'NewFunctionName'])"`
+2. Add the encrypted const to `src/obf.rs` (in the Win32 API names section, with `W_` prefix)
+3. Add a wrapper function to `src/resolve.rs` following the existing pattern:
+   ```rust
+   #[cfg(windows)]
+   pub unsafe fn NewFunctionName(arg1: type1, arg2: type2) -> ReturnType {
+       type F = unsafe extern "system" fn(type1, type2) -> ReturnType;
+       let f: F = std::mem::transmute(resolve(K32, crate::obf::W_NEW_FUNCTION_NAME));
+       f(arg1, arg2)
+   }
+   ```
+4. For DLLs other than kernel32 (e.g. user32), use `U32` instead of `K32`
+5. For DLLs not loaded by default (e.g. amsi.dll), use `resolve_load()` instead of `resolve()`
+
+**Converting a module to use dynamic resolution:**
+
+1. Remove all `use windows::` imports
+2. Remove any `#[link] extern "system"` blocks (except GetModuleHandleA/GetProcAddress which are bootstrap)
+3. Replace API calls: `windows::Win32::...::FunctionName(args)` → `resolve::FunctionName(args)`
+4. Replace newtype constants with raw u32 (see table below)
+5. Replace `.map_err()` / `Result` patterns with `== 0` or `.is_null()` checks
+6. Replace `HANDLE` with `*mut std::ffi::c_void`
+7. Add `#[repr(C)]` struct definitions for any Windows structs used (PROCESSENTRY32, STARTUPINFOW, etc.)
+
+**Common Win32 constants (raw u32):**
+
+| Constant | Value | Used for |
+|----------|-------|----------|
+| MEM_COMMIT | 0x1000 | VirtualAlloc* |
+| MEM_RESERVE | 0x2000 | VirtualAlloc* |
+| MEM_RELEASE | 0x8000 | VirtualFree* |
+| PAGE_NOACCESS | 0x01 | VirtualProtect* |
+| PAGE_READWRITE | 0x04 | VirtualProtect* |
+| PAGE_EXECUTE_READ | 0x20 | VirtualProtect* |
+| PAGE_EXECUTE_READWRITE | 0x40 | VirtualProtect* |
+| PROCESS_CREATE_THREAD | 0x0002 | OpenProcess |
+| PROCESS_VM_OPERATION | 0x0008 | OpenProcess |
+| PROCESS_VM_READ | 0x0010 | OpenProcess |
+| PROCESS_VM_WRITE | 0x0020 | OpenProcess |
+| PROCESS_CREATE_PROCESS | 0x0080 | OpenProcess (PPID) |
+| PROCESS_QUERY_INFORMATION | 0x0400 | OpenProcess |
+| THREAD_SUSPEND_RESUME | 0x0002 | OpenThread |
+| THREAD_GET_CONTEXT | 0x0008 | OpenThread |
+| THREAD_SET_CONTEXT | 0x0010 | OpenThread |
+| TH32CS_SNAPPROCESS | 0x00000002 | CreateToolhelp32Snapshot |
+| TH32CS_SNAPTHREAD | 0x00000004 | CreateToolhelp32Snapshot |
+| CREATE_SUSPENDED | 0x00000004 | CreateProcessW |
+| EXTENDED_STARTUPINFO_PRESENT | 0x00080000 | CreateProcessW |
+| INFINITE | 0xFFFFFFFF | WaitForSingleObject |
+| WAIT_OBJECT_0 | 0 | WaitForSingleObject |
+| FILE_MAP_WRITE | 0x0002 | MapViewOfFile |
 
 ## PE Metadata (`build.rs`)
 

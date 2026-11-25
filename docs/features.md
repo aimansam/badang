@@ -84,6 +84,17 @@ Encrypts shellcode in memory during sleep periods. Manual method: VirtualProtect
 
 Builds fake call stack frames before calling Windows APIs. Scans ntdll/kernel32 .text for ROP gadgets (ret, pop rbp;ret), constructs fake frame chain. EDR stack-walking sees ntdll → kernel32 instead of shellcode addresses.
 
+## Dynamic API Resolution (IAT Evasion)
+
+All Win32 API calls are resolved at runtime via `GetModuleHandleA` + `GetProcAddress` with XOR-encrypted function names. Only these two bootstrap functions appear in the Import Address Table — Defender's ML model no longer sees VirtualAlloc, WriteProcessMemory, CreateRemoteThread, etc. in the binary's imports.
+
+The `windows` crate was removed entirely. All 20+ modules use `crate::resolve::*` for API calls and raw u32 constants for flags/permissions.
+
+**Before:** 98 KERNEL32.dll IAT entries (full injection API set flagged by ML)
+**After:** ~50 entries (standard CRT only, zero injection/evasion APIs)
+
+Combined with XOR string obfuscation (`src/obf.rs`) and PE metadata embedding (`build.rs`), the binary presents a clean static profile to signature and ML-based scanners.
+
 ## PE Helpers
 
 Shared module (`src/pe.rs`) for PE parsing: export table walking, .text section finding, byte pattern scanning. Used by indirect syscalls (`src/syscall/indirect.rs`), module stomping (`src/injection/stomp.rs`), and stack spoofing (`src/evasion/stack_spoof.rs`).
