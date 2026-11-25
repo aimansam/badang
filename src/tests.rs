@@ -153,25 +153,25 @@ fn test_injection_technique_from_str() {
 #[test]
 fn test_injection_technique_name() {
     let cr = InjectionTechnique::CreateRemoteThread;
-    assert_eq!(cr.name(), "CreateRemoteThread");
+    assert_eq!(cr.name(), "CRT");
 
     let apc = InjectionTechnique::APC;
-    assert_eq!(apc.name(), "APC Injection");
+    assert_eq!(apc.name(), "APC");
 
     let th = InjectionTechnique::ThreadHijack;
-    assert_eq!(th.name(), "Thread Hijack (SetThreadContext)");
+    assert_eq!(th.name(), "Context Redirect");
 
     let eb = InjectionTechnique::EarlyBird;
-    assert_eq!(eb.name(), "Early Bird APC");
+    assert_eq!(eb.name(), "Early Bird");
 
     let sm = InjectionTechnique::SectionMapping;
-    assert_eq!(sm.name(), "Section Mapping (MapViewOfFile)");
+    assert_eq!(sm.name(), "Section Map");
 
     let cb = InjectionTechnique::Callback;
-    assert_eq!(cb.name(), "Callback Execution (EnumWindows)");
+    assert_eq!(cb.name(), "Callback");
 
     let ms = InjectionTechnique::ModuleStomp;
-    assert_eq!(ms.name(), "Module Stomping");
+    assert_eq!(ms.name(), "Module Overwrite");
 }
 
 #[test]
@@ -231,7 +231,7 @@ fn test_hook_status_display() {
     };
 
     let hooked_str = format!("{}", hooked);
-    assert!(hooked_str.contains("HOOKED"));
+    assert!(hooked_str.contains("MODIFIED"));
     assert!(hooked_str.contains("NtCreateFile"));
     assert_eq!(hooked.address, 0x1000);
 
@@ -261,7 +261,7 @@ fn test_hook_type_display_output() {
         original_bytes: None,
         hooked_bytes: None,
     };
-    assert!(format!("{}", jmp_status).contains("HOOKED"));
+    assert!(format!("{}", jmp_status).contains("MODIFIED"));
 
     let clean_status = HookStatus {
         api_name: "NtWriteVirtualMemory".to_string(),
@@ -345,7 +345,7 @@ fn test_hook_type_display() {
     assert!(format!("{}", HookType::JMP).contains("JMP"));
     assert!(format!("{}", HookType::PushPop).contains("PUSH"));
     assert!(format!("{}", HookType::INT3).contains("INT3"));
-    assert!(format!("{}", HookType::Unknown).contains("Unknown"));
+    assert!(format!("{}", HookType::Unknown).contains("unknown"));
 }
 
 #[test]
@@ -467,7 +467,7 @@ fn test_live_inject_rejects_empty_shellcode() {
         crate::injection::live_inject(1234, &InjectionTechnique::CreateRemoteThread, &[], &log)
             .expect_err("empty shellcode must be rejected");
     assert!(
-        err.contains("shellcode is empty"),
+        err.contains("payload is empty"),
         "unexpected error: {}",
         err
     );

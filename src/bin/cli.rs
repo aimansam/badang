@@ -1,5 +1,4 @@
 // Badang — CLI binary entry point
-// For authorized security research and red team use only.
 
 use badang::cli::CLI;
 use badang::log::LogSink;
@@ -85,7 +84,7 @@ fn main() {
         "inject" => {
             if cli.dry_run {
                 println!(
-                    "[DRY RUN] Would inject into PID {} using technique {}",
+                    "[DRY RUN] PID {} technique {}",
                     cli.target_pid, cli.inject_technique
                 );
                 badang::injection::dry_run(cli.target_pid, &cli.inject_technique, &log);
@@ -129,7 +128,7 @@ fn main() {
             };
 
             // If --payload is set and --input is empty, dump a .bin file as hex
-            if cli.convert_input.is_empty() && cli.payload != "shellcode.bin" {
+            if cli.convert_input.is_empty() && cli.payload != "payload.bin" {
                 match badang::injection::load_payload(&cli.payload) {
                     Ok(bytes) => {
                         println!("[DUMP] {} ({} bytes)\n", cli.payload, bytes.len());
@@ -246,7 +245,7 @@ fn main() {
         }
         "unhook" => {
             if cli.dry_run {
-                println!("[DRY RUN] Would unhook API: {}", cli.unhook_func);
+                println!("[DRY RUN] Would restore API: {}", cli.unhook_func);
                 badang::analysis::unhook::dry_run(&cli.unhook_func, &log);
             } else {
                 badang::analysis::unhook::analyze(&cli.unhook_func, &log);

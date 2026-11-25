@@ -85,7 +85,7 @@ fn draw_file_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
         ui.text_edit_singleline(&mut state.path_input);
         if ui.button("Browse...").clicked() {
             if let Some(path) = rfd::FileDialog::new()
-                .set_title("Select shellcode payload")
+                .set_title("Select payload file")
                 .pick_file()
             {
                 state.path_input = path.display().to_string();
@@ -124,7 +124,7 @@ fn draw_file_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
 }
 
 fn draw_convert_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
-    ui.label("Paste shellcode in any format:");
+    ui.label("Paste payload bytes in any format:");
     ui.add_space(2.0);
 
     ui.horizontal(|ui| {
@@ -174,7 +174,7 @@ fn draw_convert_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
             state.converted_bytes = None;
 
             if state.input_text.trim().is_empty() {
-                state.convert_error = "Paste shellcode bytes above".to_string();
+                state.convert_error = "Paste payload bytes above".to_string();
             } else if state.auto_detect {
                 match payload_fmt::auto_parse(&state.input_text) {
                     Ok((bytes, fmt)) => {
@@ -225,7 +225,7 @@ fn draw_convert_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
 }
 
 fn draw_generate_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
-    ui.label("Generate shellcode payload (no msfvenom needed):");
+    ui.label("Generate payload (built-in):");
     ui.add_space(2.0);
 
     let types = PayloadType::all();

@@ -26,7 +26,7 @@ pub struct SyscallState {
 }
 
 pub fn draw(ui: &mut egui::Ui, state: &mut SyscallState, dry_run: &mut bool, log: &LogSink) {
-    ui.heading("Direct Syscall Invocation");
+    ui.heading("Syscall Resolution");
     ui.add_space(4.0);
 
     ui.horizontal(|ui| {

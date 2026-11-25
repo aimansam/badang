@@ -13,8 +13,8 @@ pub struct SleepState {
 }
 
 pub fn draw(ui: &mut egui::Ui, state: &mut SleepState, dry_run: &mut bool, log: &LogSink) {
-    ui.heading("Sleep Obfuscation");
-    ui.label("Encrypt shellcode in memory during sleep to evade scanners.");
+    ui.heading("Memory Protection");
+    ui.label("Encrypt memory regions during idle periods.");
     ui.add_space(8.0);
 
     let methods = sleep_obfs::SleepMethod::all();

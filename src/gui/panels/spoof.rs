@@ -23,8 +23,8 @@ pub struct SpoofState {
 }
 
 pub fn draw(ui: &mut egui::Ui, state: &mut SpoofState, dry_run: &mut bool, log: &LogSink) {
-    ui.heading("Stack Spoofing");
-    ui.label("Fake call stack frames to bypass EDR stack-walking.");
+    ui.heading("Call Stack Management");
+    ui.label("Manage call stack frames for API calls.");
     ui.add_space(8.0);
 
     ui.horizontal(|ui| {

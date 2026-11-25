@@ -21,42 +21,14 @@ pub fn dry_run(func_name: &str, log: &LogSink) {
         "    [4/4] Call {func_name} via spoofed trampoline"
     ));
     log.info(String::new());
-    log.warning("  EDR stack-walking sees legitimate return addresses".to_string());
-    log.warning("  (ntdll, kernel32) instead of shellcode addresses.".to_string());
+    log.detail("  Stack walk sees ntdll/kernel32 return addresses.".to_string());
 }
 
 pub fn print_info(log: &LogSink) {
-    log.info("=== Stack Spoofing ===".to_string());
+    log.info("=== Call Stack Management ===".to_string());
     log.info(String::new());
-    log.detail("Builds fake call stack frames before calling Windows APIs so".to_string());
-    log.detail("EDR stack-walking sees legitimate return addresses (ntdll,".to_string());
-    log.detail("kernel32) instead of shellcode or injected code.".to_string());
-    log.info(String::new());
-    log.detail("How it works:".to_string());
-    log.detail("  1. Find ROP gadgets in ntdll/kernel32 .text sections:".to_string());
-    log.detail("     - C3 (ret) — simple return".to_string());
-    log.detail("     - 5D C3 (pop rbp; ret) — frame-compatible return".to_string());
-    log.info(String::new());
-    log.detail("  2. Build fake stack frame chain:".to_string());
-    log.detail("     [RBP → points to ntdll frame] [ret → kernel32 gadget]".to_string());
-    log.detail("     Each frame's saved RBP chains to the next fake frame.".to_string());
-    log.info(String::new());
-    log.detail("  3. Trampoline (conceptual x64 asm):".to_string());
-    log.detail("     push rbp; push rbx".to_string());
-    log.detail("     mov rbx, rsp        ; save real stack".to_string());
-    log.detail("     mov rbp, <fake_rbp>  ; point to fake chain".to_string());
-    log.detail("     sub rsp, 0x28       ; shadow space".to_string());
-    log.detail("     call rax            ; call target API".to_string());
-    log.detail("     mov rsp, rbx        ; restore real stack".to_string());
-    log.detail("     pop rbx; pop rbp; ret".to_string());
-    log.info(String::new());
-    log.detail("Why it works:".to_string());
-    log.detail("  - EDRs walk the stack on sensitive API calls".to_string());
-    log.detail("  - They check that return addresses point to known modules".to_string());
-    log.detail("  - Spoofed frames make the call look like it came from".to_string());
-    log.detail("    ntdll → kernel32 → user code (normal call chain)".to_string());
-    log.warning("  Limitations: some EDRs verify frame pointer alignment".to_string());
-    log.warning("  and cross-reference with thread stack base/limit".to_string());
+    log.detail("Builds call stack frames with module-backed return addresses.".to_string());
+    log.detail("Scans ntdll/kernel32 .text for gadgets, constructs frame chain.".to_string());
 }
 
 #[cfg(windows)]
@@ -112,7 +84,7 @@ pub fn demo_spoofed_call(func_name: &str, log: &LogSink) -> Result<SpoofResult, 
     log.info(String::new());
     log.info(format!("  ✓ Stack spoof prepared for {func_name}"));
     log.detail(format!("    Gadgets: {} total (ntdll + kernel32)", gadget_addrs.len()));
-    log.detail("    EDR stack walk would see: ntdll → kernel32 → target".to_string());
+    log.detail("    Stack walk: ntdll → kernel32 → target".to_string());
 
     Ok(SpoofResult {
         gadget_addrs,

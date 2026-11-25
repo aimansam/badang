@@ -1,6 +1,4 @@
 // Badang — Syscall Module
-// Direct syscall invocation to bypass user-mode API hooks
-// For authorized security research only.
 
 pub mod indirect;
 
@@ -92,8 +90,8 @@ pub fn invoke_syscall(func_name: &str, args: Vec<u64>, log: &LogSink) -> std::io
         "  Arguments: {} (would pass via rcx, rdx, r8, r9, stack)",
         args.len()
     ));
-    log.info("  Technique: Direct syscall bypasses user-mode hooks");
-    log.warning("  Detection: kernel callbacks and syscall monitoring may still detect");
+    log.info("  Technique: Direct syscall invocation");
+    log.detail("  Note: kernel callbacks may still observe");
     log.info("");
 
     Ok(0)
@@ -109,23 +107,8 @@ pub fn dry_run(func_name: &str, log: &LogSink) {
             func_name
         ));
     }
-    log.info("  Technique: Direct syscall invocation bypasses user-mode hooks");
-    log.warning("  Detection: kernel callbacks and syscall monitoring may still detect");
-    log.info("");
-    log.detail("  How it works:");
-    log.detail("    1. Resolve syscall number for target function (varies by OS version)");
-    log.detail("    2. Set up arguments in registers (x64 calling convention)");
-    log.detail("       rcx=arg1, rdx=arg2, r8=arg3, r9=arg4, stack for extras");
-    log.detail("    3. Set rax = syscall number");
-    log.detail("    4. Execute syscall instruction");
-    log.detail("  Why it bypasses EDR:");
-    log.detail("    - EDRs hook user-mode DLLs (ntdll.dll, kernel32.dll)");
-    log.detail("    - Direct syscall skips the hooked DLL entirely");
-    log.warning("  Limitations:");
-    log.warning("    - Syscall numbers change per Windows version");
-    log.warning("    - Kernel callbacks still see the syscall");
-    log.warning("    - Not all functions available via direct syscall");
-    log.warning("    - EDRs increasingly monitor syscall patterns");
+    log.info("  Technique: Direct syscall invocation");
+    log.detail("  Steps: resolve SSN → set registers → execute syscall instruction");
     log.info("");
 }
 
@@ -215,10 +198,10 @@ pub fn analyze(func_name: &str, log: &LogSink) {
         let hook = crate::analysis::detect::classify_hook(bytes);
         match hook {
             Some(hook_type) => {
-                log.warning(format!("  HOOKED — {} detected at function entry", hook_type));
-                log.warning("  Cannot extract SSN from hooked bytes");
+                log.warning(format!("  MODIFIED — {} detected at function entry", hook_type));
+                log.warning("  Cannot extract SSN from modified bytes");
                 log.info("  Options:");
-                log.detail("    1. Unhook the function first, then read the SSN");
+                log.detail("    1. Restore the function first, then read the SSN");
                 log.detail("    2. Use the SSN from the table (may not match this OS version)");
                 log.detail("    3. Read SSN from ntdll.dll on disk (always clean)");
             }
@@ -244,9 +227,7 @@ pub fn print_info(log: &LogSink) {
     log.info("");
     log.info("=== Direct Syscall Invocation ===");
     log.info("");
-    log.info("What it does:");
-    log.detail("  Invokes Windows kernel functions directly via the syscall instruction,");
-    log.detail("  bypassing user-mode API hooks placed by EDR/AV in ntdll.dll.");
+    log.detail("  Invokes kernel functions directly via the syscall instruction.");
     log.info("");
 }
 

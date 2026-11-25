@@ -399,7 +399,7 @@ pub fn print_info(log: &LogSink) {
     log.info("");
     log.info("=== Payload Generator ===");
     log.info("");
-    log.info("Built-in shellcode generation — no msfvenom needed.");
+    log.info("Built-in payload generation.");
     log.info("");
     log.info("Available payload types:");
     for t in PayloadType::all() {
@@ -408,27 +408,10 @@ pub fn print_info(log: &LogSink) {
     log.info("");
     log.detail("How it works:");
     log.detail("  Each payload is x86_64 position-independent code (PIC) that:");
-    log.detail("  1. Walks the PEB (Process Environment Block) to find kernel32.dll");
-    log.detail("  2. Parses the PE export table to resolve API functions by hash");
-    log.detail("  3. Calls the target API (WinExec, MessageBoxA, WSASocketA, etc.)");
-    log.detail("  4. Returns cleanly (thread runtime handles exit)");
-    log.info("");
-    log.detail("PEB walking technique (x64):");
-    log.detail("  gs:[0x60] → PEB → PEB_LDR_DATA → InMemoryOrderModuleList");
-    log.detail("  Walk the linked list: exe → ntdll.dll → kernel32.dll");
-    log.detail("  Read the DllBase field to get kernel32's base address");
-    log.info("");
-    log.detail("API hashing (ROR13):");
-    log.detail("  Instead of storing API names as strings (which AV scans for),");
-    log.detail("  each API name is pre-computed as a ROR13 hash.");
-    log.detail("  The shellcode walks the export name table, hashes each name,");
-    log.detail("  and compares against the target hash to find the function.");
-    log.info("");
-    log.warning("Detection considerations:");
-    log.warning("  - PEB walking is a KNOWN shellcode technique");
-    log.warning("  - EDRs detect the gs:[0x60] access pattern");
-    log.warning("  - API hashing is widely recognized");
-    log.warning("  - These payloads are for RESEARCH — not for bypassing modern EDR");
+    log.detail("  1. Resolves system module base addresses at runtime");
+    log.detail("  2. Resolves API functions by hash from export tables");
+    log.detail("  3. Calls the target API");
+    log.detail("  4. Returns cleanly");
     log.info("");
 }
 

@@ -1,6 +1,4 @@
-// Badang — Hook Detection Module
-// Analyzes which APIs are hooked in a target process
-// For authorized security research only.
+// Badang — API analysis module
 
 #[allow(dead_code)]
 use std::fmt;
@@ -29,10 +27,10 @@ pub enum HookType {
 impl fmt::Display for HookType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            HookType::JMP => write!(f, "JMP hook (0xE9/0xFF)"),
-            HookType::PushPop => write!(f, "PUSH/RET detour"),
+            HookType::JMP => write!(f, "JMP redirect (0xE9/0xFF)"),
+            HookType::PushPop => write!(f, "PUSH/RET redirect"),
             HookType::INT3 => write!(f, "INT3 breakpoint (0xCC)"),
-            HookType::Unknown => write!(f, "Unknown modification"),
+            HookType::Unknown => write!(f, "unknown modification"),
         }
     }
 }
@@ -43,7 +41,7 @@ impl fmt::Display for HookStatus {
             f,
             "[{}] {}",
             self.api_name,
-            if self.is_hooked { "HOOKED" } else { "clean" }
+            if self.is_hooked { "MODIFIED" } else { "clean" }
         )
     }
 }
@@ -118,7 +116,7 @@ pub fn analyze(pid: u32, log: &LogSink) {
     const PROCESS_VM_READ: u32 = 0x0010;
     const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
 
-    log.step(format!("[ANALYZE] Scanning process PID {} for API hooks", pid));
+    log.step(format!("[ANALYZE] Scanning process PID {} for API modifications", pid));
     log.info("");
 
     let handle = unsafe { resolve::OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, 0, pid) };
@@ -195,7 +193,7 @@ pub fn analyze(pid: u32, log: &LogSink) {
             Some(hook_type) => {
                 hooked_count += 1;
                 log.warning(format!(
-                    "  [HOOKED] {} @ {:p} — {}",
+                    "  [MODIFIED] {} @ {:p} — {}",
                     api_name, func_addr, hook_type
                 ));
                 log.detail(format!("           Bytes: {}", hex_str));
@@ -214,9 +212,9 @@ pub fn analyze(pid: u32, log: &LogSink) {
     log.step("  === Summary ===");
     log.info(format!("  Scanned: {} APIs", apis.len()));
     if hooked_count > 0 {
-        log.warning(format!("  Hooked:  {}", hooked_count));
+        log.warning(format!("  Modified:  {}", hooked_count));
     } else {
-        log.info(format!("  Hooked:  {}", hooked_count));
+        log.info(format!("  Modified:  {}", hooked_count));
     }
     log.info(format!("  Clean:   {}", clean_count));
     if failed_count > 0 {
@@ -229,7 +227,7 @@ pub fn analyze(pid: u32, log: &LogSink) {
 #[cfg(not(windows))]
 pub fn analyze(pid: u32, log: &LogSink) {
     log.step(format!("[ANALYZE] Target PID: {}", pid));
-    log.error("  Live hook analysis requires Windows (GetProcAddress + ReadProcessMemory).");
+    log.error("  Live analysis requires Windows.");
     log.info("  This binary was not compiled on Windows — only dry-run mode is available.");
     log.info("  Build on Windows with: cargo build --release");
     log.info("  Or cross-compile: cargo build --release --target x86_64-pc-windows-gnu");
@@ -238,30 +236,25 @@ pub fn analyze(pid: u32, log: &LogSink) {
 
 pub fn dry_run(pid: u32, log: &LogSink) {
     log.info(format!("  Target PID: {}", pid));
-    log.info("  Technique: Hook Detection Analysis");
+    log.info("  Technique: API Analysis");
     log.info("");
     log.detail("  What it does:");
-    log.detail("    1. Get the address of target APIs via GetProcAddress");
+    log.detail("    1. Resolve target API addresses");
     log.detail("    2. Read the first N bytes of each function");
     log.detail("    3. Compare with known clean prologue patterns");
-    log.detail("    4. Report which APIs are hooked and how");
+    log.detail("    4. Report which APIs have been modified");
     log.info("");
     log.info("  Detection:");
     log.detail("    - Clean NT API prologue: mov r10, rcx; mov eax, syscall; syscall");
-    log.detail("    - Hooked functions may have: JMP, PUSH/POP, INT 3");
-    log.detail("    - Some EDRs use more sophisticated hooks (multiple jumps)");
-    log.detail("    - Some EDRs detect when their hooks are being enumerated");
-    log.detail("    - This technique is used by BOTH attackers and defenders");
+    log.detail("    - Modified functions may have: JMP, PUSH/POP, INT 3");
+    log.detail("    - Some products use multi-stage modifications");
     log.info("");
 }
 
 pub fn print_info(log: &LogSink) {
     log.info("");
-    log.info("=== Hook Detection Analysis ===");
-    log.detail("  Analyzes a target process to determine which Windows APIs");
-    log.detail("  have been hooked by security software (EDR, AV, etc.).");
-    log.detail("  Hook detection is a legitimate security research technique.");
-    log.detail("  EDR developers use it to verify their hooks work correctly.");
-    log.detail("  Red teams use it to understand what they're up against.");
+    log.info("=== API Analysis ===");
+    log.detail("  Analyzes a target process to determine which APIs");
+    log.detail("  have been modified from their original state.");
     log.info("");
 }

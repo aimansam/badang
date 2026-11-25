@@ -6,13 +6,13 @@ use crate::injection::{InjectionResult, InjectionTechnique};
 use crate::log::LogSink;
 
 const TECHNIQUES: &[(&str, &str)] = &[
-    ("createremote", "CreateRemoteThread"),
-    ("apc", "APC Injection"),
-    ("hijack", "Thread Hijack (SetThreadContext)"),
-    ("earlybird", "Early Bird APC"),
-    ("section", "Section Mapping (MapViewOfFile)"),
-    ("callback", "Callback Execution (EnumWindows)"),
-    ("stomp", "Module Stomping"),
+    ("createremote", "CRT"),
+    ("apc", "APC"),
+    ("hijack", "Context Redirect"),
+    ("earlybird", "Early Bird"),
+    ("section", "Section Map"),
+    ("callback", "Callback"),
+    ("stomp", "Module Overwrite"),
 ];
 
 #[derive(Default)]
@@ -41,9 +41,9 @@ pub fn draw(
             Ok(Ok(result)) => {
                 state.task_running = false;
                 state.task_rx = None;
-                log.step("[DONE] Injection chain completed.");
+                log.step("[DONE] Completed.");
                 log.info(format!(
-                    "  Shellcode at remote address 0x{:X} ({} bytes) — use Cleanup to free",
+                    "  Payload at remote address 0x{:X} ({} bytes) — use Cleanup to free",
                     result.remote_base, result.size
                 ));
                 state.last_injection_pid = state.pid_input.trim().parse().unwrap_or(0);
@@ -52,7 +52,7 @@ pub fn draw(
             Ok(Err(e)) => {
                 state.task_running = false;
                 state.task_rx = None;
-                log.error(format!("[FAILED] Injection chain aborted: {}", e));
+                log.error(format!("[FAILED] Aborted: {}", e));
             }
             Err(mpsc::TryRecvError::Empty) => {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -65,7 +65,7 @@ pub fn draw(
         }
     }
 
-    ui.heading("Process Injection");
+    ui.heading("Process Techniques");
     ui.add_space(4.0);
 
     ui.horizontal(|ui| {
@@ -89,7 +89,7 @@ pub fn draw(
         ui.text_edit_singleline(&mut state.payload_path);
         if ui.button("Browse...").clicked() {
             if let Some(path) = rfd::FileDialog::new()
-                .set_title("Select shellcode payload")
+                .set_title("Select payload file")
                 .pick_file()
             {
                 state.payload_path = path.display().to_string();
@@ -101,9 +101,9 @@ pub fn draw(
 
     ui.horizontal(|ui| {
         let label = if *dry_run {
-            "Mode: DRY RUN (educational only)"
+            "Mode: DRY RUN"
         } else {
-            "Mode: LIVE INJECTION"
+            "Mode: LIVE"
         };
         let color = if *dry_run {
             theme::ACCENT_GREEN
@@ -131,7 +131,7 @@ pub fn draw(
     } else if *dry_run {
         "Run (Dry Run)"
     } else {
-        "Execute Injection"
+        "Execute"
     };
 
     let enabled = !state.task_running && (*dry_run || can_execute);
@@ -169,7 +169,7 @@ pub fn draw(
                 ));
             } else {
                 log.step(format!(
-                    "[DRY RUN] Would inject into PID {} using technique {}",
+                    "[DRY RUN] PID {} — technique {}",
                     pid, technique_key
                 ));
             }
@@ -177,7 +177,7 @@ pub fn draw(
         } else {
             let payload_path = state.payload_path.trim().to_string();
             if payload_path.is_empty() {
-                state.error = "Payload file path is required for live injection".to_string();
+                state.error = "Payload file path is required".to_string();
                 return;
             }
             let shellcode = match crate::injection::load_payload(&payload_path) {
@@ -195,7 +195,7 @@ pub fn draw(
                 }
             };
 
-            log.step(format!("=== LIVE INJECTION — {} ===", technique.name()));
+            log.step(format!("=== LIVE — {} ===", technique.name()));
             log.info(format!(
                 "  Payload: {} ({} bytes)",
                 payload_path,
@@ -206,7 +206,7 @@ pub fn draw(
             } else {
                 log.info(format!("  Target PID: {}", pid));
             }
-            log.warning("  WARNING: this performs REAL Win32 calls against a live process.");
+            log.warning("  WARNING: this performs REAL calls against a live process.");
 
             let (tx, rx) = mpsc::channel::<Result<InjectionResult, String>>();
             let log_clone = log.clone();

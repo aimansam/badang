@@ -53,7 +53,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut AnalyzeState, dry_run: &mut bool, log
                     log.step(format!("[DRY RUN] Would analyze process PID {}", pid));
                     crate::analysis::detect::dry_run(pid, log);
                 } else {
-                    log.step(format!("[LIVE] Scanning process PID {} for hooks...", pid));
+                    log.step(format!("[LIVE] Scanning process PID {} for modifications...", pid));
                     crate::analysis::detect::analyze(pid, log);
                 }
             }

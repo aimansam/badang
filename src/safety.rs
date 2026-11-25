@@ -1,5 +1,4 @@
 // Badang — Safety module
-// Enforces safety controls for offensive security research
 
 use crate::log::LogSink;
 
@@ -29,20 +28,9 @@ pub fn check_execution_mode(dry_run: bool, confirm: bool) -> Result<(), String> 
 
 pub fn print_safety_warning(log: &LogSink) {
     log.warning("===========================================================");
-    log.warning("  BADANG — EDR Evasion Research Toolkit");
-    log.warning("  FOR AUTHORIZED SECURITY RESEARCH ONLY");
+    log.warning("  BADANG — FOR AUTHORIZED USE ONLY");
     log.warning("===========================================================");
     log.warning("");
-    log.warning("Using these techniques without explicit authorization is illegal.");
-    log.warning("Always obtain written permission before testing against any system.");
-    log.warning("");
-    log.warning("This tool includes safety controls:");
-    log.warning("  - --dry-run mode (default): simulates without executing");
-    log.warning("  - --pid <PID> required for any active operation");
-    log.warning("  - System processes (PID < 100) are protected");
-    log.warning("  - --confirm required for actual execution");
-    log.warning("");
-    log.warning("See README.md for full documentation and legal notices.");
-    log.warning("===========================================================");
+    log.warning("  --dry-run (default) | --pid required | --confirm required");
     log.warning("");
 }

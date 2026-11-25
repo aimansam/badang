@@ -21,7 +21,7 @@ pub struct UnhookState {
 }
 
 pub fn draw(ui: &mut egui::Ui, state: &mut UnhookState, dry_run: &mut bool, log: &LogSink) {
-    ui.heading("API Unhooking");
+    ui.heading("API Restoration");
     ui.add_space(4.0);
 
     ui.horizontal(|ui| {

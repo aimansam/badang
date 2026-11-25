@@ -14,8 +14,8 @@ pub struct PpidState {
 }
 
 pub fn draw(ui: &mut egui::Ui, state: &mut PpidState, dry_run: &mut bool, log: &LogSink) {
-    ui.heading("PPID Spoofing");
-    ui.label("Spawn a process with a spoofed parent PID.");
+    ui.heading("Parent Attribute Management");
+    ui.label("Spawn a process with a specified parent attribute.");
     ui.add_space(8.0);
 
     ui.horizontal(|ui| {
