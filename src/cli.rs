@@ -49,6 +49,7 @@ pub struct CLI {
     pub comms_key: String,
     pub comms_path: String,
     pub comms_use_sleep_obfs: bool,
+    pub comms_insecure: bool,
     pub loader_check: String,
     pub loader_action: String,
     pub postex_module: String,
@@ -115,6 +116,7 @@ impl CLI {
             comms_key: String::new(),
             comms_path: String::from("/api/status"),
             comms_use_sleep_obfs: false,
+            comms_insecure: false,
             loader_check: String::from("all"),
             loader_action: String::from("report"),
             postex_module: String::new(),
@@ -400,6 +402,9 @@ impl CLI {
                 }
                 "--sleep-obfs" => {
                     cli.comms_use_sleep_obfs = true;
+                }
+                "--comms-insecure" => {
+                    cli.comms_insecure = true;
                 }
                 "--check" => {
                     i += 1;

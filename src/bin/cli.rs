@@ -545,6 +545,7 @@ fn main() {
                     key,
                     agent_id: badang::comms::generate_agent_id(),
                     use_sleep_obfs: cli.comms_use_sleep_obfs,
+                    ignore_cert_errors: cli.comms_insecure,
                     max_retries: 10,
                 };
                 match badang::comms::run_comms(&config, &log) {
