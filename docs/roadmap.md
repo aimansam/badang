@@ -10,8 +10,8 @@ Five projects cover the full kill chain, named after the legendary Malay warrior
 |---|---------|-------------|------|--------|
 | 1 | **Badang** | Hang Badang — the strongman | **Dual role:** attacker-side (generate, encrypt, convert, package) + target-side implant (loader, evasion, inject, persist, comms, post-ex) | All phases complete |
 | 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | All phases complete |
-| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — Docker + Wine + ClamAV + YARA + Defender, execute Badang builds, verify Jebat checkin, AV evasion scoring | Complete |
-| 4 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
+| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — Docker + Wine + ClamAV + YARA + Defender, multi-binary inspect, execute Badang builds, verify Jebat checkin | All phases complete |
+| 4 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — campaigns, SMTP, payload packaging (HTA/LNK/VBS/ISO/macro), page cloner, tracking, web UI | All phases complete |
 | 5 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
 
 ---
@@ -38,9 +38,9 @@ Five projects cover the full kill chain, named after the legendary Malay warrior
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
 │  2b. TEST    │  [3] TUAH (the sandbox)                               │
-│              │      QEMU VM orchestration, deploy + execute binary   │
-│              │      Verify Jebat checkin, Defender evasion scoring   │
-│              │      Shell task validation, automated test reports    │
+│              │      Docker + Wine execution, ClamAV/YARA/Defender    │
+│              │      Multi-binary inspect (classify + bulk scan)      │
+│              │      Verify Jebat checkin, shell task, test reports   │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
@@ -125,11 +125,11 @@ ATTACKER MACHINE                                            TARGET MACHINE
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
 │  JEBAT (C2)      │  │ BADANG (builder) │  │  TUAH (sandbox)  │
 │                  │  │                  │  │                  │
-│  ┌────────────┐ │  │  generate        │  │  QEMU VM mgmt    │
-│  │ Listeners  │ │  │  encrypt         │  │  deploy binary   │
-│  │  HTTPS     │ │  │  convert         │  │  verify checkin  │
-│  │  DNS       │ │  │  package         │  │  Defender check  │
-│  │  SMB       │ │  │  (Exe/Ps1/       │  │  shell task test │
+│  ┌────────────┐ │  │  generate        │  │  Docker + Wine   │
+│  │ Listeners  │ │  │  encrypt         │  │  ClamAV + YARA   │
+│  │  HTTPS     │ │  │  convert         │  │  Defender scan   │
+│  │  DNS       │ │  │  package         │  │  multi-inspect   │
+│  │  SMB       │ │  │  (Exe/Ps1/       │  │  verify checkin  │
 │  ├────────────┤ │  │   CSharp/Dll)    │  │  test report     │
 │  │ Task Queue │ │  └────────┬─────────┘  └────────┬─────────┘
 │  │ Implant DB │ │           │  binary             │  tests
@@ -859,8 +859,7 @@ lekir/
 | 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
-| 12 | Docker sandbox + Wine exec + ClamAV/YARA/Defender scan + Jebat checkin verify + report | Tuah | Attacker (any with Docker) | **Done** |
-| 12b | Multi-binary inspect: classify (PE/DLL/shellcode/scripts/delivery) + bulk scan directory | Tuah | Attacker (any with Docker) | **Done** |
+| 12 | Docker sandbox + Wine exec + ClamAV/YARA/Defender scan + multi-binary inspect + Jebat checkin verify | Tuah | Attacker (any with Docker) | **Done** |
 | 13 | Core server + SMTP sender + campaign engine + email templates | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 14 | Payload packager (HTA, LNK, VBS, macro) + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 15 | Tracking (pixel, click, download) + results + React web UI | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
@@ -869,7 +868,7 @@ lekir/
 | 18 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
 | 19 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
 
-Badang, Jebat, Tuah (with multi-binary inspect), and Kasturi are complete. Build order next: Lekir.
+Badang, Jebat, Tuah, and Kasturi are complete. Next: Lekir.
 
 ---
 
