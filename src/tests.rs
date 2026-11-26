@@ -6,6 +6,7 @@
 use crate::evasion::amsi::AmsiTarget;
 use crate::cli::CLI;
 use crate::payload::encrypt::EncryptMethod;
+use crate::persistence::PersistMethod;
 use crate::syscall::indirect::ResolutionMethod;
 use crate::evasion::sleep_obfs::SleepMethod;
 use crate::analysis::detect::{
@@ -59,6 +60,9 @@ fn test_cli_struct() {
         generate_url: String::new(),
         generate_stager_key: String::new(),
         generate_package: String::new(),
+        persist_method: String::new(),
+        persist_name: String::new(),
+        persist_target: String::new(),
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);
@@ -895,4 +899,52 @@ fn test_live_crt_chain_manual() {
         &log,
     )
     .expect("live CRT chain should complete");
+}
+
+// ── Persistence ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_persist_method_from_str() {
+    assert_eq!(PersistMethod::from_str("registry"), Some(PersistMethod::RegistryRun));
+    assert_eq!(PersistMethod::from_str("reg"), Some(PersistMethod::RegistryRun));
+    assert_eq!(PersistMethod::from_str("schtask"), Some(PersistMethod::ScheduledTask));
+    assert_eq!(PersistMethod::from_str("task"), Some(PersistMethod::ScheduledTask));
+    assert_eq!(PersistMethod::from_str("wmi"), Some(PersistMethod::WmiSubscription));
+    assert_eq!(PersistMethod::from_str("hijack"), Some(PersistMethod::DllHijack));
+    assert_eq!(PersistMethod::from_str("com"), Some(PersistMethod::ComHijack));
+    assert_eq!(PersistMethod::from_str("service"), Some(PersistMethod::ServiceCreation));
+    assert_eq!(PersistMethod::from_str("svc"), Some(PersistMethod::ServiceCreation));
+    assert_eq!(PersistMethod::from_str("unknown"), None);
+}
+
+#[test]
+fn test_persist_method_name() {
+    assert_eq!(PersistMethod::RegistryRun.name(), "Registry Configuration");
+    assert_eq!(PersistMethod::ScheduledTask.name(), "Scheduled Automation");
+    assert_eq!(PersistMethod::WmiSubscription.name(), "Event Subscription");
+    assert_eq!(PersistMethod::DllHijack.name(), "Module Placement");
+    assert_eq!(PersistMethod::ComHijack.name(), "Component Registration");
+    assert_eq!(PersistMethod::ServiceCreation.name(), "Service Configuration");
+}
+
+#[test]
+fn test_persist_method_all() {
+    let all = PersistMethod::all();
+    assert_eq!(all.len(), 6);
+}
+
+#[test]
+fn test_persist_dry_run() {
+    let log = crate::log::LogSink::new();
+    crate::persistence::dry_run("registry", "TestVal", "runner.exe", &log);
+    let entries = log.drain();
+    assert!(entries.iter().any(|e| e.message.contains("Registry Configuration")));
+}
+
+#[test]
+fn test_persist_print_info() {
+    let log = crate::log::LogSink::new();
+    crate::persistence::print_info(&log);
+    let entries = log.drain();
+    assert!(entries.len() >= 6);
 }

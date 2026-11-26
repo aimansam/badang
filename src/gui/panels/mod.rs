@@ -9,4 +9,5 @@ pub mod scan;
 pub mod sleep;
 pub mod spoof;
 pub mod syscall;
+pub mod persist;
 pub mod unhook;

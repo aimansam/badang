@@ -471,6 +471,42 @@ fn main() {
                 }
             }
         }
+        "persist" => {
+            if cli.dry_run {
+                badang::persistence::dry_run(
+                    &cli.persist_method,
+                    &cli.persist_name,
+                    &cli.payload,
+                    &log,
+                );
+            } else {
+                let method = match badang::persistence::PersistMethod::from_str(&cli.persist_method) {
+                    Some(m) => m,
+                    None => {
+                        eprintln!(
+                            "ERROR: unknown method '{}'. Use: registry, schtask, wmi, hijack, com, service",
+                            cli.persist_method
+                        );
+                        process::exit(1);
+                    }
+                };
+                let config = badang::persistence::PersistConfig {
+                    method,
+                    name: cli.persist_name.clone(),
+                    target: cli.persist_target.clone(),
+                    payload_path: cli.payload.clone(),
+                };
+                match badang::persistence::run_persist(&config, &log) {
+                    Ok(result) => {
+                        log.info(format!("  {}: {}", result.method.name(), result.description));
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
         _ => {
             eprintln!("Unknown command: {}", cli.command);
             process::exit(1);
