@@ -1,19 +1,18 @@
 # Roadmap
 
-Four projects cover the full kill chain, named after the legendary Malay warriors of the *Hikayat Hang Tuah*.
+Five projects cover the full kill chain, named after the legendary Malay warriors of the *Hikayat Hang Tuah*.
 
 ---
 
-## The 4 Projects
+## The 5 Projects
 
 | # | Project | Named After | Role | Status |
 |---|---------|-------------|------|--------|
 | 1 | **Badang** | Hang Badang — the strongman | **Dual role:** attacker-side (generate, encrypt, convert, package) + target-side implant (loader, evasion, inject, persist, comms, post-ex) | All phases complete |
 | 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | All phases complete |
-| 3 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
-| 4 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
-
-The fifth warrior — **Hang Tuah**, the greatest of them all — is reserved for the umbrella framework that ties them together.
+| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — QEMU VM orchestration, deploy + detonate Badang builds, verify Jebat checkin, Defender evasion scoring | Planned |
+| 4 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
+| 5 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
 
 ---
 
@@ -25,20 +24,27 @@ The fifth warrior — **Hang Tuah**, the greatest of them all — is reserved fo
 │              4 warriors, full recon → post-ex coverage                │
 ├──────────────┬───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  1. RECON    │  [4] LEKIR (the scout)                                │
+│  1. RECON    │  [5] LEKIR (the scout)                                │
 │              │      Subdomain enum, email harvest, tech fingerprint   │
 │              │      Breach lookup, social profiling                   │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  2. WEAPON-  │  [1] BADANG (the strongman) ⚡ RUNS ON ATTACKER       │
+│  2. WEAPON-  │  [1] BADANG (the strongman) — RUNS ON ATTACKER        │
 │     IZE      │      badang-cli generate (exec, reverse, bind, stager)│
 │              │      badang-cli encrypt (XOR/RC4 + PIC stubs)         │
 │              │      badang-cli package (Exe, Ps1, CSharp, Dll)       │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  3. DELIVER  │  [3] KASTURI (the lure) — takes Badang-generated       │
+│  2b. TEST    │  [3] TUAH (the sandbox)                               │
+│              │      QEMU VM orchestration, deploy + execute binary   │
+│              │      Verify Jebat checkin, Defender evasion scoring   │
+│              │      Shell task validation, automated test reports    │
+│              │                                                       │
+├──────────────┼───────────────────────────────────────────────────────┤
+│              │                                                       │
+│  3. DELIVER  │  [4] KASTURI (the lure) — takes Badang-generated       │
 │              │      payloads, wraps in macro/HTA/LNK/ISO packaging   │
 │              │      Landing page cloner, delivery tracking            │
 │              │  [1] BADANG — Loader module (runs on TARGET)           │
@@ -116,40 +122,43 @@ ATTACKER MACHINE                                            TARGET MACHINE
 └────────┬─────────┘
          │  payload
          ▼
-┌──────────────────┐  ┌──────────────────┐
-│  JEBAT (C2)      │  │ BADANG (builder) │
-│                  │  │                  │
-│  ┌────────────┐ │  │  generate        │
-│  │ Listeners  │ │  │  encrypt         │
-│  │  HTTPS     │ │  │  convert         │      ┌─────────────────────────────────┐
-│  │  DNS       │ │  │  package         │      │       BADANG (implant)          │
-│  │  SMB       │ │  │  (Exe/Ps1/       │      │                                 │
-│  ├────────────┤ │  │   CSharp/Dll)    │      │  ┌──────────┐  ┌─────────────┐ │
-│  │ Task Queue │ │  └────────┬─────────┘      │  │ Loader   │  │ Evasion     │ │
-│  │ Implant DB │ │           │  binary        │  │ anti-sb  │  │ ETW/AMSI    │ │
-│  │ File Store │ │           └───────────────►│  │ anti-dbg │  │ sleep obfs  │ │
-│  │ Event Bus  │ │  HTTPS                     │  │ anti-vm  │  │ stack spoof │ │
-│  ├────────────┤ │◄──────────────────────────►│  └────┬─────┘  └──────┬──────┘ │
-│  │ Operator   │ │  DNS                       │       │               │        │
-│  │  Web UI    │ │  SMB                       │  ┌────▼───────────────▼──────┐ │
-│  │  CLI       │ │  RC4 encrypted             │  │ Injection (8 techniques)  │ │
-│  │  Builder   │ │                            │  └────────────┬──────────────┘ │
-│  └────────────┘ │                            │               │                │
-└──────────────────┘                            │  ┌────────────▼──────────────┐ │
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  JEBAT (C2)      │  │ BADANG (builder) │  │  TUAH (sandbox)  │
+│                  │  │                  │  │                  │
+│  ┌────────────┐ │  │  generate        │  │  QEMU VM mgmt    │
+│  │ Listeners  │ │  │  encrypt         │  │  deploy binary   │
+│  │  HTTPS     │ │  │  convert         │  │  verify checkin  │
+│  │  DNS       │ │  │  package         │  │  Defender check  │
+│  │  SMB       │ │  │  (Exe/Ps1/       │  │  shell task test │
+│  ├────────────┤ │  │   CSharp/Dll)    │  │  test report     │
+│  │ Task Queue │ │  └────────┬─────────┘  └────────┬─────────┘
+│  │ Implant DB │ │           │  binary             │  tests
+│  │ File Store │ │           │                     │  against
+│  │ Event Bus  │◄├───────────┼─────────────────────┘
+│  ├────────────┤ │           └───────────────►┌─────────────────────────────────┐
+│  │ Operator   │ │  HTTPS                     │       BADANG (implant)          │
+│  │  Web UI    │ │◄──────────────────────────►│                                 │
+│  │  CLI       │ │  DNS                       │  ┌──────────┐  ┌─────────────┐ │
+│  │  Builder   │ │  SMB                       │  │ Loader   │  │ Evasion     │ │
+│  └────────────┘ │  RC4 encrypted             │  │ anti-sb  │  │ ETW/AMSI    │ │
+└──────────────────┘                            │  │ anti-dbg │  │ sleep obfs  │ │
+                                                │  │ anti-vm  │  │ stack spoof │ │
+                                                │  └────┬─────┘  └──────┬──────┘ │
+                                                │  ┌────▼───────────────▼──────┐ │
+                                                │  │ Injection (8 techniques)  │ │
+                                                │  └────────────┬──────────────┘ │
+                                                │  ┌────────────▼──────────────┐ │
                                                 │  │ Comms (beacon loop)       │ │
                                                 │  │ RC4 transport              │ │
                                                 │  └────────────┬──────────────┘ │
-                                                │               │                │
                                                 │  ┌────────────▼──────────────┐ │
                                                 │  │ Persistence (6 methods)   │ │
                                                 │  └────────────┬──────────────┘ │
-                                                │               │                │
                                                 │  ┌────────────▼──────────────┐ │
                                                 │  │ Post-Ex (9 modules)       │ │
                                                 │  │ creds │ lateral │ exfil   │ │
                                                 │  │ socks │ portfwd           │ │
                                                 │  └───────────────────────────┘ │
-                                                │                                 │
                                                 └─────────────────────────────────┘
 ```
 
@@ -434,6 +443,90 @@ Transport: RC4 encrypt the entire message body with the shared hex key. HTTPS wr
 
 ---
 
+## Tuah — Binary Testing Sandbox
+
+Separate repository (`tuah/`). Lightweight detonation sandbox — automates testing Badang binaries against a Windows VM before engagement. Named after Hang Tuah — the greatest warrior, the one who proves the others are ready.
+
+**Runs on:** Attacker machine (Linux)
+
+### Architecture
+
+```
+tuah/
+├── src/
+│   ├── main.rs            CLI entry (clap subcommands)
+│   ├── config.rs          TOML config structs
+│   ├── vm.rs              QEMU lifecycle (start, stop, snapshot revert, wait SSH)
+│   ├── ssh.rs             SSH/SCP command wrappers (shells out to ssh/scp)
+│   ├── deploy.rs          File transfer + binary execution on VM
+│   ├── jebat.rs           Jebat API client (login, list implants, queue task, poll)
+│   ├── defender.rs        Defender status via SSH + PowerShell
+│   └── report.rs          Test result formatting (pass/fail per check)
+├── config/
+│   └── tuah.toml          VM image path, SSH creds, Jebat server, test params
+├── Cargo.toml
+├── .gitignore
+└── README.md
+```
+
+### Test Flow
+
+```
+tuah test <binary>
+  1. Revert VM to clean snapshot         (qemu-img snapshot -a)
+  2. Boot VM                             (qemu-system-x86_64)
+  3. Wait for SSH ready                  (TCP connect poll)
+  4. Copy binary to VM                   (scp)
+  5. Record pre-execution implant list   (GET /api/implants on Jebat)
+  6. Execute binary on VM                (ssh)
+  7. Poll Jebat for new implant checkin  (GET /api/implants, diff)
+  8. Check Defender detection status      (PowerShell Get-MpThreatDetection)
+  9. Queue shell task + verify result    (POST /api/tasks, poll completion)
+  10. Print test report
+  11. Shutdown VM
+```
+
+### Core Components
+
+| Component | What |
+|-----------|------|
+| **VM Manager** | QEMU orchestration — snapshot revert, boot with SSH port forward, clean shutdown. No heavy VM libraries, shells out to `qemu-system-x86_64` and `qemu-img`. |
+| **Deployer** | SCP binary into VM, SSH execute with fire-and-forget (Badang runs in background). |
+| **Jebat Client** | Same REST API pattern as `jebat-cli` — JWT login, list implants, queue task, poll task result. Detects new checkin by diffing implant list before/after execution. |
+| **Defender Checker** | PowerShell over SSH — `Get-MpThreatDetection` for detections, `Get-MpComputerStatus` for real-time protection status. Reports threat name and action if detected. |
+| **Reporter** | Structured test report: pass/fail per step, timing, agent ID, Defender status. |
+
+### CLI Commands
+
+```
+tuah test <binary>     Full test cycle (revert → boot → deploy → verify → report → shutdown)
+tuah vm start          Boot VM from clean snapshot
+tuah vm stop           Shutdown VM
+tuah vm revert         Revert to clean snapshot
+tuah vm ssh            Open interactive SSH session to VM
+tuah status            Check VM and Jebat connectivity
+```
+
+### Prerequisites
+
+- QEMU installed (`qemu-system-x86_64`, `qemu-img`)
+- Windows QCOW2 image with OpenSSH server enabled
+- Clean snapshot saved (`qemu-img snapshot -c clean windows.qcow2`)
+- `sshpass` (optional, for password-based SSH; key-based recommended)
+- Jebat C2 server running and accessible
+
+### Tech Stack
+
+| Layer | Choice | Reason |
+|-------|--------|--------|
+| Language | Rust | Consistent with ecosystem |
+| HTTP | reqwest | Jebat API client, same as jebat-cli |
+| CLI | clap | Same as all other tools |
+| VM | QEMU (shell out) | Lightweight, no library deps, snapshot support |
+| SSH | ssh/scp (shell out) | Simple, leverages existing SSH config |
+
+---
+
 ## Kasturi — Phishing Toolkit
 
 Separate repository (`kasturi/`). Delivery platform — crafts and sends the lure that gets Badang onto the target. Named after Hang Kasturi — kasturi means "musk", the scent that draws you in.
@@ -598,7 +691,15 @@ lekir/
 │  │  BADANG (builder side)                                      │
 │  │  generate, encrypt, convert, package                        │
 │  │  runs here — produces the binary that runs on target        │
-│  └────────┬────────────────────────────────────────────────┐   │
+│  └────────┬──────────────────────────┬─────────────────────┐   │
+│           │                          │                     │   │
+│           │               ┌──────────▼─────────┐           │   │
+│           │               │  TUAH (sandbox)    │           │   │
+│           │               │  QEMU VM test      │           │   │
+│           │               │  deploy + detonate  │           │   │
+│           │               │  verify checkin    │──────────►│   │
+│           │               │  Defender check    │  Jebat    │   │
+│           │               └────────────────────┘  API      │   │
 │           │                                                │   │
 └───────────┼────────────────────────────────────────────────┼───┘
             │  delivers payload          commands            │
@@ -636,14 +737,15 @@ lekir/
 | 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
-| 12 | Campaign engine + SMTP + templates | Kasturi | Attacker (Linux/macOS/Win) | Planned |
-| 13 | Payload packager + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
-| 14 | Tracking + results dashboard | Kasturi | Attacker (Linux/macOS/Win) | Planned |
-| 15 | Subdomain enum + DNS + email harvest | Lekir | Attacker (Linux/macOS/Win) | Planned |
-| 16 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
-| 17 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
+| 12 | VM orchestration + deploy + Jebat checkin verify + Defender check + report | Tuah | Attacker (Linux) | Planned |
+| 13 | Campaign engine + SMTP + templates | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 14 | Payload packager + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 15 | Tracking + results dashboard | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 16 | Subdomain enum + DNS + email harvest | Lekir | Attacker (Linux/macOS/Win) | Planned |
+| 17 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
+| 18 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
 
-Badang and Jebat are complete. Build order: Kasturi → Lekir.
+Badang and Jebat are complete. Build order: Tuah → Kasturi → Lekir.
 
 ---
 
