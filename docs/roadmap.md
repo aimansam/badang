@@ -8,7 +8,7 @@ Two projects cover the full kill chain. Badang is the main project — everythin
 
 | # | Project | Role | Status |
 |---|---------|------|--------|
-| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | Phase 1 complete, expanding |
+| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | Phase 2 complete, expanding |
 | 2 | **C2 Server** (next) | Attacker-side — listeners, task queue, operator web UI | Planned |
 
 Future additions (separate projects):
@@ -63,7 +63,7 @@ Future additions (separate projects):
 │              │                                                       │
 │  6. C2       │  [1] Badang — Comms module (target-side)              │
 │              │      Beacon loop, jitter, HTTPS/DNS/SMB channels,     │
-│              │      AES-256 transport encryption                      │
+│              │      RC4 transport encryption                          │
 │              │  [2] C2 Server (attacker-side)                        │
 │              │      Listeners, task queue, operator web UI,           │
 │              │      implant tracking, payload builder                 │
@@ -116,7 +116,7 @@ TARGET MACHINE                              ATTACKER MACHINE
 │  ┌────────────▼──────────────┐ │         │  │ Tracking   │ │
 │  │ Comms (beacon loop)       │─┼─────────┼──┤            │ │
 │  │ HTTPS / DNS / SMB channel │ │         │  └────────────┘ │
-│  │ AES-256 transport         │ │         │                  │
+│  │ RC4 transport              │ │         │                  │
 │  └────────────┬──────────────┘ │         └──────────────────┘
 │               │                │
 │  ┌────────────▼──────────────┐ │
@@ -153,27 +153,30 @@ All shipped and pushed. Badang is the weaponize + exploit + install platform.
 | Analysis | Hook detection (13 APIs) + API restoration (3 methods) | Done |
 | IAT Evasion | Dynamic API resolution (40+ wrappers), XOR string obfuscation, string sanitization | Done |
 
-### Phase 2: Communications Module (Next)
+### Phase 2: Communications Module (DONE)
 
-Beacon loop + C2 channels. Without comms, Badang can't receive tasks or report back.
+Beacon loop with HTTPS channel, RC4-encrypted binary wire protocol, task execution.
 
 ```
 src/comms/
-  mod.rs      — beacon loop, task dispatch, jitter/interval config
-  http.rs     — HTTPS channel via WinHTTP (dynamic resolve, same pattern as resolve.rs)
-  dns.rs      — DNS channel (TXT record queries for tasking, A/AAAA for responses)
-  smb.rs      — SMB named pipe channel (lateral movement, internal networks)
-  crypto.rs   — AES-256 transport encryption (key exchange on first checkin)
+  mod.rs        — beacon loop, Channel enum, CommsConfig, jitter/interval, dry_run
+  protocol.rs   — binary wire format (checkin, task list, result), RC4 encrypt/decrypt
+  https.rs      — HTTPS channel via WinINet (dynamic resolve, same pattern as resolve.rs)
+  task.rs       — task executor (shell via CreateProcessW + pipe capture)
+  dns.rs        — DNS channel stub (planned)
+  smb.rs        — SMB named pipe stub (planned)
 ```
 
 | Feature | Detail |
 |---------|--------|
 | Beacon loop | Configurable interval + jitter (percentage-based randomization) |
-| HTTPS channel | WinHTTP via dynamic resolve, TLS, custom headers, proxy-aware |
-| DNS channel | TXT records for tasking, encoded responses, slow but stealthy |
-| SMB channel | Named pipes for internal pivoting, no internet required |
-| Transport crypto | AES-256-CBC, key derived from initial handshake, per-session |
-| Task dispatch | Receive task ID + payload from C2, execute, return results |
+| HTTPS channel | WinINet via dynamic resolve, TLS, configurable host/port/path |
+| Wire protocol | Binary little-endian, 3 message types (checkin, task list, result) |
+| Transport crypto | RC4 symmetric encryption with configurable hex key |
+| Task types | Shell (cmd.exe /c with pipe capture), sleep change, exit, nop |
+| Error handling | Exponential backoff on connection errors, max retry limit |
+| DNS channel | Stub — planned for future |
+| SMB channel | Stub — planned for future |
 
 ### Phase 3: Loader Module
 
@@ -232,7 +235,7 @@ badang-c2/
 ├── server/              Rust backend
 │   ├── listeners/       HTTPS, DNS, SMB listener threads
 │   ├── tasks/           Task queue per implant (FIFO)
-│   ├── crypto/          Session key management, AES-256
+│   ├── crypto/          Session key management, RC4
 │   ├── tracking/        Implant registry (ID, OS, user, last seen)
 │   └── api/             REST API for operator web UI
 ├── web/                 Operator dashboard
@@ -245,13 +248,13 @@ badang-c2/
 
 | Component | What |
 |-----------|------|
-| **Listeners** | HTTPS (TLS termination), DNS (authoritative nameserver), SMB (named pipe server) |
+| **Listeners** | HTTPS (TLS termination, RC4 wire protocol), DNS (planned), SMB (planned) |
 | **Task Queue** | Per-implant FIFO, task types: shell, upload, download, module load, config update |
 | **Implant Tracking** | ID, hostname, OS version, username, internal IP, last checkin, sleep interval |
 | **Operator UI** | Web dashboard — implant table, task builder, output viewer, listener management |
 | **Builder** | Generate Badang implant configs — C2 URL, channels, jitter, persistence method |
 
-Built with the same Rust patterns as Badang (string obfuscation, dynamic resolve) for the implant-facing components. Server components can use standard Rust web frameworks (axum/actix).
+The C2 server must implement Badang's binary wire protocol (see `src/comms/protocol.rs`) and RC4 transport encryption. Built with the same Rust patterns as Badang (string obfuscation, dynamic resolve) for the implant-facing components. Server components can use standard Rust web frameworks (axum/actix).
 
 ---
 
@@ -260,7 +263,7 @@ Built with the same Rust patterns as Badang (string obfuscation, dynamic resolve
 | Phase | What | Project | Status |
 |-------|------|---------|--------|
 | 1 | Core platform (8 inject, 6 persist, stager, packaging, evasion, syscalls) | Badang | **Done** |
-| 2 | Comms module (beacon loop + HTTPS/DNS/SMB channels) | Badang | Next |
+| 2 | Comms module (beacon loop + HTTPS channel + RC4 transport) | Badang | **Done** |
 | 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | Planned |
 | 4 | C2 Server (listeners + task queue + web UI) | badang-c2 | Planned |
 | 5 | Post-ex: credentials + lateral movement | Badang | Planned |
