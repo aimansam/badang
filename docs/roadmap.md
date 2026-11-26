@@ -8,7 +8,7 @@ Two projects cover the full kill chain. Badang is the main project — everythin
 
 | # | Project | Role | Status |
 |---|---------|------|--------|
-| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | Phase 2 complete, expanding |
+| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | Phase 3 complete, expanding |
 | 2 | **C2 Server** (next) | Attacker-side — listeners, task queue, operator web UI | Planned |
 
 Future additions (separate projects):
@@ -178,30 +178,32 @@ src/comms/
 | DNS channel | Stub — planned for future |
 | SMB channel | Stub — planned for future |
 
-### Phase 3: Loader Module
+### Phase 3: Loader Module (DONE)
 
-Anti-analysis checks before the implant runs. Integrates with existing `src/evasion/`.
+Pre-execution environment checks — anti-sandbox, anti-debug, anti-VM.
 
 ```
 src/loader/
-  mod.rs         — orchestrator: checks → unhook → decrypt → inject
-  sandbox.rs     — sleep acceleration, process count, disk size, username
-  antidebug.rs   — NtQueryInformationProcess, PEB check, timing
-  antivm.rs      — CPUID, registry keys, MAC prefix, WMI
+  mod.rs         — CheckCategory enum, LoaderConfig, run_checks orchestrator, dry_run
+  sandbox.rs     — 5 checks: timing, process count, disk, username, memory
+  antidebug.rs   — 4 checks: IsDebuggerPresent, debug port, debug flags, timing
+  antivm.rs      — 3 checks: CPUID hypervisor, registry VM keys, MAC prefix OUI
 ```
 
 | Check | Technique |
 |-------|-----------|
-| Sandbox | Sleep acceleration (sleep 10s, check elapsed < 10s = sandbox) |
-| Sandbox | Process count < 50 = sandbox |
-| Sandbox | Disk size < 60GB = sandbox |
-| Sandbox | Username = "sandbox", "malware", "virus" = sandbox |
-| Debug | `NtQueryInformationProcess(ProcessDebugPort)` |
-| Debug | PEB `BeingDebugged` flag via `gs:[0x60] + 0x02` |
-| Debug | `rdtsc` timing check (> threshold = debugger stepping) |
-| VM | CPUID hypervisor bit (ECX bit 31) |
-| VM | Registry `HKLM\SOFTWARE\VMware` / `VirtualBox` |
-| VM | MAC prefix `00:0C:29` (VMware), `08:00:27` (VBox) |
+| Sandbox | Sleep acceleration (sleep 10s, check elapsed < 9s = detected) |
+| Sandbox | Process count < 50 = detected |
+| Sandbox | Disk size < 60GB = detected |
+| Sandbox | Username contains sandbox/malware/virus/test/sample = detected |
+| Sandbox | Physical memory < 2GB = detected |
+| Debug | `IsDebuggerPresent()` non-zero = detected |
+| Debug | `NtQueryInformationProcess(ProcessDebugPort=7)` non-zero = detected |
+| Debug | `NtQueryInformationProcess(ProcessDebugFlags=0x1F)` zero = detected |
+| Debug | Timing: Sleep(500) elapsed > 1500ms = detected |
+| VM | CPUID bit 31 (hypervisor present) |
+| VM | Registry `HKLM\SOFTWARE\VMware` / `VirtualBox` / `Hyper-V` |
+| VM | MAC prefix `00:0C:29` (VMware), `08:00:27` (VBox), `00:15:5D` (Hyper-V) |
 
 ### Phase 4: Post-Exploitation — Credentials + Lateral
 
@@ -264,7 +266,7 @@ The C2 server must implement Badang's binary wire protocol (see `src/comms/proto
 |-------|------|---------|--------|
 | 1 | Core platform (8 inject, 6 persist, stager, packaging, evasion, syscalls) | Badang | **Done** |
 | 2 | Comms module (beacon loop + HTTPS channel + RC4 transport) | Badang | **Done** |
-| 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | Planned |
+| 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | **Done** |
 | 4 | C2 Server (listeners + task queue + web UI) | badang-c2 | Planned |
 | 5 | Post-ex: credentials + lateral movement | Badang | Planned |
 | 6 | Post-ex: exfiltration + tunneling | Badang | Planned |

@@ -164,6 +164,20 @@ Callback loop with encrypted transport for remote task execution. Uses WinINet H
 
 Usage: `badang-cli comms --host 10.0.0.1 --comms-key aabbccdd --interval 30000 --jitter 20 -x -c`
 
+## Loader (Pre-Execution Checks)
+
+Environment analysis before the implant proceeds. Detects sandboxes, debuggers, and virtual machines to avoid detonation in analysis environments.
+
+| Category | Checks |
+|----------|--------|
+| Environment | Sleep timing consistency, process count (< 50), disk size (< 60GB), suspicious username, physical memory (< 2GB) |
+| Process | Process flag, debug port query, debug flags query, execution timing |
+| Hardware | CPUID hypervisor bit, VM registry keys (VMware/VirtualBox/Hyper-V), network adapter MAC prefix OUI |
+
+Configurable fail action: report only, or terminate on detection.
+
+Usage: `badang-cli loader --check all -x -c`
+
 ## PE Helpers
 
 Shared module (`src/pe.rs`) for PE parsing: export table walking, .text section finding, byte pattern scanning. Used by indirect syscalls (`src/syscall/indirect.rs`), module stomping (`src/injection/stomp.rs`), and stack spoofing (`src/evasion/stack_spoof.rs`).

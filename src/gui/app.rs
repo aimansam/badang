@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::gui::panels::{amsi, analyze, comms, etw, inject, load, log_panel, persist, ppid, scan, sleep, spoof, syscall, unhook};
+use crate::gui::panels::{amsi, analyze, comms, etw, inject, load, loader, log_panel, persist, ppid, scan, sleep, spoof, syscall, unhook};
 use crate::gui::theme;
 use crate::log::{LogEntry, LogSink};
 
@@ -19,6 +19,7 @@ enum Tab {
     Spoof,
     Persist,
     Comms,
+    Loader,
 }
 
 pub struct BadangApp {
@@ -42,6 +43,7 @@ pub struct BadangApp {
     spoof_state: spoof::SpoofState,
     persist_state: persist::PersistState,
     comms_state: comms::CommsState,
+    loader_state: loader::LoaderState,
 
     theme_applied: bool,
 }
@@ -69,6 +71,7 @@ impl BadangApp {
             spoof_state: spoof::SpoofState::default(),
             persist_state: persist::PersistState::default(),
             comms_state: comms::CommsState::default(),
+            loader_state: loader::LoaderState::default(),
 
             theme_applied: false,
         }
@@ -108,6 +111,7 @@ impl eframe::App for BadangApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Spoof, "Stack");
                 ui.selectable_value(&mut self.active_tab, Tab::Persist, "Persist");
                 ui.selectable_value(&mut self.active_tab, Tab::Comms, "Comms");
+                ui.selectable_value(&mut self.active_tab, Tab::Loader, "Loader");
             });
         });
 
@@ -187,6 +191,9 @@ impl eframe::App for BadangApp {
             }
             Tab::Comms => {
                 comms::draw(ui, &mut self.comms_state, &mut self.dry_run, &self.log_sink);
+            }
+            Tab::Loader => {
+                loader::draw(ui, &mut self.loader_state, &mut self.dry_run, &self.log_sink);
             }
         });
     }

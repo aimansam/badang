@@ -49,6 +49,9 @@ Select method from dropdown (Registry / Scheduled Task / WMI / DLL Placement / C
 ### Comms
 Select channel from dropdown (Secure Web Channel / Name Resolution Channel / Network Share Channel). Enter host, port, path, interval, jitter, and RC4 hex key. Optional "Sleep obfuscation" checkbox encrypts memory during sleep. Dry run shows the callback sequence; live mode connects and enters the callback loop. Info button lists available channels and their status.
 
+### Loader
+Select check category from dropdown (Full Analysis / Environment Analysis / Process Inspection / Hardware Fingerprint). Select fail action (Report Only / Terminate on Detection). Dry run shows the check sequence; live mode runs checks and displays results as CLEAN or FLAGGED per check with detail text. Info button lists all check categories.
+
 ## Log Panel
 
 Bottom panel. Shows all output — scan results, hex dumps, errors. Click **Clear** to reset.

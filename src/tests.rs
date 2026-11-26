@@ -8,6 +8,7 @@ use crate::cli::CLI;
 use crate::payload::encrypt::EncryptMethod;
 use crate::comms::{self, Channel};
 use crate::comms::protocol::{self, TaskType};
+use crate::loader::{self, CheckCategory, FailAction};
 use crate::persistence::PersistMethod;
 use crate::syscall::indirect::ResolutionMethod;
 use crate::evasion::sleep_obfs::SleepMethod;
@@ -73,6 +74,8 @@ fn test_cli_struct() {
         comms_key: String::new(),
         comms_path: "/api/status".to_string(),
         comms_use_sleep_obfs: false,
+        loader_check: "all".to_string(),
+        loader_action: "report".to_string(),
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);
@@ -1105,4 +1108,134 @@ fn test_task_type_from_u8() {
     assert_eq!(TaskType::from_u8(2), Some(TaskType::SleepChange));
     assert_eq!(TaskType::from_u8(3), Some(TaskType::Exit));
     assert_eq!(TaskType::from_u8(255), None);
+}
+
+// ── loader module tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_check_category_from_str() {
+    assert_eq!(CheckCategory::from_str("sandbox"), Some(CheckCategory::Sandbox));
+    assert_eq!(CheckCategory::from_str("sb"), Some(CheckCategory::Sandbox));
+    assert_eq!(CheckCategory::from_str("env"), Some(CheckCategory::Sandbox));
+    assert_eq!(CheckCategory::from_str("debug"), Some(CheckCategory::Debug));
+    assert_eq!(CheckCategory::from_str("dbg"), Some(CheckCategory::Debug));
+    assert_eq!(CheckCategory::from_str("vm"), Some(CheckCategory::Vm));
+    assert_eq!(CheckCategory::from_str("virtual"), Some(CheckCategory::Vm));
+    assert_eq!(CheckCategory::from_str("hw"), Some(CheckCategory::Vm));
+    assert_eq!(CheckCategory::from_str("all"), Some(CheckCategory::All));
+    assert_eq!(CheckCategory::from_str("full"), Some(CheckCategory::All));
+    assert_eq!(CheckCategory::from_str("unknown"), None);
+}
+
+#[test]
+fn test_check_category_name() {
+    assert_eq!(CheckCategory::Sandbox.name(), "Environment Analysis");
+    assert_eq!(CheckCategory::Debug.name(), "Process Inspection");
+    assert_eq!(CheckCategory::Vm.name(), "Hardware Fingerprint");
+    assert_eq!(CheckCategory::All.name(), "Full Analysis");
+}
+
+#[test]
+fn test_check_category_all() {
+    let all = CheckCategory::all();
+    assert_eq!(all.len(), 4);
+    assert!(all.contains(&CheckCategory::Sandbox));
+    assert!(all.contains(&CheckCategory::Debug));
+    assert!(all.contains(&CheckCategory::Vm));
+    assert!(all.contains(&CheckCategory::All));
+}
+
+#[test]
+fn test_fail_action_from_str() {
+    assert_eq!(FailAction::from_str("report"), Some(FailAction::Report));
+    assert_eq!(FailAction::from_str("log"), Some(FailAction::Report));
+    assert_eq!(FailAction::from_str("exit"), Some(FailAction::Exit));
+    assert_eq!(FailAction::from_str("abort"), Some(FailAction::Exit));
+    assert_eq!(FailAction::from_str("unknown"), None);
+}
+
+#[test]
+fn test_loader_dry_run() {
+    let log = LogSink::new();
+    loader::dry_run("all", &log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+    let text: String = entries.iter().map(|e| e.message.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(text.contains("Full Analysis"));
+}
+
+#[test]
+fn test_loader_print_info() {
+    let log = LogSink::new();
+    loader::print_info(&log);
+    let entries = log.drain();
+    assert!(entries.len() >= 4);
+}
+
+#[test]
+fn test_is_suspicious_username() {
+    use crate::loader::sandbox::is_suspicious_username;
+    assert!(is_suspicious_username("sandbox"));
+    assert!(is_suspicious_username("MALWARE_USER"));
+    assert!(is_suspicious_username("virus_lab"));
+    assert!(is_suspicious_username("TestUser"));
+    assert!(is_suspicious_username("sample_account"));
+    assert!(!is_suspicious_username("john"));
+    assert!(!is_suspicious_username("administrator"));
+    assert!(!is_suspicious_username("alice"));
+}
+
+#[test]
+fn test_is_suspicious_disk() {
+    use crate::loader::sandbox::is_suspicious_disk;
+    assert!(is_suspicious_disk(30 * 1024 * 1024 * 1024)); // 30GB
+    assert!(is_suspicious_disk(0));
+    assert!(!is_suspicious_disk(100 * 1024 * 1024 * 1024)); // 100GB
+    assert!(!is_suspicious_disk(500 * 1024 * 1024 * 1024)); // 500GB
+}
+
+#[test]
+fn test_is_suspicious_memory() {
+    use crate::loader::sandbox::is_suspicious_memory;
+    assert!(is_suspicious_memory(1 * 1024 * 1024 * 1024)); // 1GB
+    assert!(is_suspicious_memory(0));
+    assert!(!is_suspicious_memory(4 * 1024 * 1024 * 1024)); // 4GB
+    assert!(!is_suspicious_memory(16 * 1024 * 1024 * 1024)); // 16GB
+}
+
+#[test]
+fn test_is_suspicious_process_count() {
+    use crate::loader::sandbox::is_suspicious_process_count;
+    assert!(is_suspicious_process_count(10));
+    assert!(is_suspicious_process_count(49));
+    assert!(!is_suspicious_process_count(50));
+    assert!(!is_suspicious_process_count(200));
+}
+
+#[test]
+fn test_is_vm_mac() {
+    use crate::loader::antivm::is_vm_mac;
+    assert!(is_vm_mac(&[0x00, 0x0C, 0x29, 0xAA, 0xBB, 0xCC])); // VMware
+    assert!(is_vm_mac(&[0x08, 0x00, 0x27, 0x11, 0x22, 0x33])); // VirtualBox
+    assert!(is_vm_mac(&[0x00, 0x15, 0x5D, 0x44, 0x55, 0x66])); // Hyper-V
+    assert!(!is_vm_mac(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF])); // random
+    assert!(!is_vm_mac(&[0x00, 0x00])); // too short
+}
+
+#[test]
+fn test_loader_result_safe_flag() {
+    use crate::loader::sandbox::CheckResult;
+    let checks = vec![
+        CheckResult { name: "A".into(), detected: false, detail: "ok".into() },
+        CheckResult { name: "B".into(), detected: false, detail: "ok".into() },
+    ];
+    let safe = checks.iter().all(|c| !c.detected);
+    assert!(safe);
+
+    let checks2 = vec![
+        CheckResult { name: "A".into(), detected: false, detail: "ok".into() },
+        CheckResult { name: "B".into(), detected: true, detail: "flagged".into() },
+    ];
+    let safe2 = checks2.iter().all(|c| !c.detected);
+    assert!(!safe2);
 }

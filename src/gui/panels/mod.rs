@@ -3,6 +3,7 @@ pub mod analyze;
 pub mod comms;
 pub mod etw;
 pub mod inject;
+pub mod loader;
 pub mod load;
 pub mod ppid;
 pub mod log_panel;

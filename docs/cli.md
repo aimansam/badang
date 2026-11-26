@@ -103,6 +103,18 @@ badang-cli comms --host 10.0.0.1 --comms-key aabbccdd --comms-port 8443 --path /
 
 Channels: `https` (operational), `dns` (planned), `smb` (planned)
 
+### Loader
+```bash
+badang-cli loader --check all -x -c                          # run all checks
+badang-cli loader --check sandbox -x -c                      # environment only
+badang-cli loader --check debug -x -c                        # process inspection only
+badang-cli loader --check vm -x -c                           # hardware fingerprint only
+badang-cli loader --check debug --action exit -x -c          # terminate on detection
+```
+
+Categories: `sandbox` (env), `debug` (dbg), `vm` (hw), `all` (full)
+Actions: `report` (default), `exit`
+
 ### Unhook
 ```bash
 badang-cli unhook --unhook NtCreateThreadEx -x -c
@@ -166,3 +178,5 @@ badang-cli load --payload shellcode.bin
 | `--comms-key` | | RC4 hex key (comms) |
 | `--path` | | HTTP path (comms, default /api/status) |
 | `--sleep-obfs` | | Enable sleep obfuscation (comms) |
+| `--check` | | Loader check category: sandbox/debug/vm/all |
+| `--action` | | Loader fail action: report/exit |

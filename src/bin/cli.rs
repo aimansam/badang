@@ -558,6 +558,53 @@ fn main() {
                 }
             }
         }
+        "loader" => {
+            if cli.dry_run {
+                badang::loader::dry_run(&cli.loader_check, &log);
+            } else {
+                let category = match badang::loader::CheckCategory::from_str(&cli.loader_check) {
+                    Some(c) => c,
+                    None => {
+                        eprintln!(
+                            "ERROR: unknown category '{}'. Use: sandbox, debug, vm, all",
+                            cli.loader_check
+                        );
+                        process::exit(1);
+                    }
+                };
+                let fail_action = match badang::loader::FailAction::from_str(&cli.loader_action) {
+                    Some(a) => a,
+                    None => {
+                        eprintln!(
+                            "ERROR: unknown action '{}'. Use: report, exit",
+                            cli.loader_action
+                        );
+                        process::exit(1);
+                    }
+                };
+                let config = badang::loader::LoaderConfig {
+                    category,
+                    fail_action,
+                };
+                match badang::loader::run_checks(&config, &log) {
+                    Ok(result) => {
+                        if result.safe {
+                            log.info("  Environment: CLEAR");
+                        } else {
+                            let detected: Vec<_> = result.checks.iter()
+                                .filter(|c| c.detected)
+                                .map(|c| c.name.as_str())
+                                .collect();
+                            log.info(format!("  Environment: FLAGGED ({})", detected.join(", ")));
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
         _ => {
             eprintln!("Unknown command: {}", cli.command);
             process::exit(1);
