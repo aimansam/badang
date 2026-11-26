@@ -1,5 +1,6 @@
 pub mod amsi;
 pub mod analyze;
+pub mod comms;
 pub mod etw;
 pub mod inject;
 pub mod load;

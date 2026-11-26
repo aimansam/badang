@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::gui::panels::{amsi, analyze, etw, inject, load, log_panel, persist, ppid, scan, sleep, spoof, syscall, unhook};
+use crate::gui::panels::{amsi, analyze, comms, etw, inject, load, log_panel, persist, ppid, scan, sleep, spoof, syscall, unhook};
 use crate::gui::theme;
 use crate::log::{LogEntry, LogSink};
 
@@ -18,6 +18,7 @@ enum Tab {
     Sleep,
     Spoof,
     Persist,
+    Comms,
 }
 
 pub struct BadangApp {
@@ -40,6 +41,7 @@ pub struct BadangApp {
     sleep_state: sleep::SleepState,
     spoof_state: spoof::SpoofState,
     persist_state: persist::PersistState,
+    comms_state: comms::CommsState,
 
     theme_applied: bool,
 }
@@ -66,6 +68,7 @@ impl BadangApp {
             sleep_state: sleep::SleepState::default(),
             spoof_state: spoof::SpoofState::default(),
             persist_state: persist::PersistState::default(),
+            comms_state: comms::CommsState::default(),
 
             theme_applied: false,
         }
@@ -104,6 +107,7 @@ impl eframe::App for BadangApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Sleep, "Sleep");
                 ui.selectable_value(&mut self.active_tab, Tab::Spoof, "Stack");
                 ui.selectable_value(&mut self.active_tab, Tab::Persist, "Persist");
+                ui.selectable_value(&mut self.active_tab, Tab::Comms, "Comms");
             });
         });
 
@@ -180,6 +184,9 @@ impl eframe::App for BadangApp {
             }
             Tab::Persist => {
                 persist::draw(ui, &mut self.persist_state, &mut self.dry_run, &self.log_sink);
+            }
+            Tab::Comms => {
+                comms::draw(ui, &mut self.comms_state, &mut self.dry_run, &self.log_sink);
             }
         });
     }

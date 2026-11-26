@@ -46,6 +46,9 @@ Select target NT function. Demo button scans for ROP gadgets and builds fake cal
 ### Persist
 Select method from dropdown (Registry / Scheduled Task / WMI / DLL Placement / COM / Service). Enter name, target (for hijack/COM), and payload path. Execute configures the selected persistence mechanism. Requires live mode + Confirm.
 
+### Comms
+Select channel from dropdown (Secure Web Channel / Name Resolution Channel / Network Share Channel). Enter host, port, path, interval, jitter, and RC4 hex key. Optional "Sleep obfuscation" checkbox encrypts memory during sleep. Dry run shows the callback sequence; live mode connects and enters the callback loop. Info button lists available channels and their status.
+
 ## Log Panel
 
 Bottom panel. Shows all output — scan results, hex dumps, errors. Click **Clear** to reset.

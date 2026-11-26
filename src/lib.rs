@@ -4,6 +4,7 @@
 
 pub mod analysis;
 pub mod cli;
+pub mod comms;
 pub mod evasion;
 #[cfg(feature = "gui")]
 pub mod gui;

