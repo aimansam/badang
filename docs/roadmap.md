@@ -620,13 +620,13 @@ Minimum viable phishing platform — create a campaign, write templates, import 
 
 | Module | What | Status |
 |--------|------|--------|
-| Server bootstrap | axum + SQLite + config + JWT auth (same pattern as Jebat) | Planned |
-| Campaign engine | Create, schedule (immediate/delayed/drip), execute, pause campaigns | Planned |
-| Target management | CSV import, manual add, dedup, per-target status tracking | Planned |
-| Template engine | Tera-based HTML + plaintext rendering, variable substitution | Planned |
-| Template presets | 4 built-in templates: invoice, IT alert, delivery, meeting invite | Planned |
-| SMTP sender | lettre crate — direct send, relay, provider API (SendGrid/SES) | Planned |
-| REST API | Campaign/template/target CRUD, send trigger, preview endpoint | Planned |
+| Server bootstrap | axum + SQLite + config + JWT auth (same pattern as Jebat) | **Done** |
+| Campaign engine | Create, schedule (immediate/delayed/drip), execute, pause campaigns | **Done** |
+| Target management | CSV import, manual add, dedup, per-target status tracking | **Done** |
+| Template engine | Tera-based HTML + plaintext rendering, variable substitution | **Done** |
+| Template presets | 4 built-in templates: invoice, IT alert, delivery, meeting invite | **Done** |
+| SMTP sender | lettre crate — direct send, relay, provider API (SendGrid/SES) | **Done** |
+| REST API | Campaign/template/target CRUD, send trigger, preview endpoint | **Done** |
 
 **DB tables:** `campaigns` (id, name, template_id, status, send_mode, schedule), `targets` (id, campaign_id, email, first_name, last_name, company, position, status), `templates` (id, name, subject, body_html, body_text, sender_name, sender_email), `events` (id, event_type, campaign_id, target_id, detail)
 
@@ -840,7 +840,7 @@ lekir/
 | 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 12 | VM orchestration + deploy + Jebat checkin verify + Defender check + report | Tuah | Attacker (Linux) | **Done** |
-| 13 | Core server + SMTP sender + campaign engine + email templates | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 13 | Core server + SMTP sender + campaign engine + email templates | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 14 | Payload packager (HTA, LNK, VBS, macro) + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
 | 15 | Tracking (pixel, click, download) + results + React web UI | Kasturi | Attacker (Linux/macOS/Win) | Planned |
 | 16 | Extended payloads (ISO, HTML smuggling, OneNote) + domain management | Kasturi | Attacker (Linux/macOS/Win) | Planned |
