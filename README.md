@@ -205,7 +205,7 @@ GitHub Actions builds both binaries on ubuntu-latest and windows-latest, runs `c
 | [cli.md](docs/cli.md) | CLI flag reference |
 | [gui.md](docs/gui.md) | GUI panel reference |
 | [hooking.md](docs/hooking.md) | How EDR hooking works |
-| [roadmap.md](docs/roadmap.md) | Full red team toolchain roadmap — 10 projects, kill chain coverage, build phases |
+| [roadmap.md](docs/roadmap.md) | Roadmap — Badang expansion phases, C2 server next project, kill chain coverage |
 
 ---
 
