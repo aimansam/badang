@@ -1,22 +1,19 @@
 # Roadmap
 
-Two projects cover the full kill chain. Badang is the implant — everything that runs on the target. Jebat is the next project — the attacker-side command and control server.
+Four projects cover the full kill chain, named after the legendary Malay warriors of the *Hikayat Hang Tuah*.
 
 ---
 
-## The 2 Projects
+## The 4 Projects
 
-| # | Project | Role | Status |
-|---|---------|------|--------|
-| 1 | **Badang** (implant) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | All phases complete |
-| 2 | **Jebat** (C2 server) | Attacker-side — listeners, task queue, implant management, operator web UI | Planned |
+| # | Project | Named After | Role | Status |
+|---|---------|-------------|------|--------|
+| 1 | **Badang** | Hang Badang — the strongman | Implant — evasion, injection, persistence, comms, loader, post-ex | All phases complete |
+| 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | Planned |
+| 3 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
+| 4 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
 
-Future additions (separate projects):
-
-| # | Project | Role |
-|---|---------|------|
-| 3 | **Phishing Toolkit** | Delivery — email templates, macro/HTA/LNK/ISO packaging, tracking, landing page cloner |
-| 4 | **Recon/OSINT** | Reconnaissance — subdomain enum, email harvest, tech fingerprint, breach lookup |
+The fifth warrior — **Hang Tuah**, the greatest of them all — is reserved for the umbrella framework that ties them together.
 
 ---
 
@@ -25,35 +22,37 @@ Future additions (separate projects):
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         RED TEAM KILL CHAIN                          │
-│                 2 projects, full target + attacker coverage           │
+│              4 warriors, full recon → post-ex coverage                │
 ├──────────────┬───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  1. RECON    │  [4] Recon/OSINT (future)                             │
+│  1. RECON    │  [4] LEKIR (the scout)                                │
 │              │      Subdomain enum, email harvest, tech fingerprint   │
+│              │      Breach lookup, social profiling                   │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  2. WEAPON-  │  [1] Badang                                           │
+│  2. WEAPON-  │  [1] BADANG (the strongman)                           │
 │     IZE      │      Payload generation (exec, reverse, bind, stager) │
 │              │      Payload encryption (XOR/RC4 + PIC stubs)         │
 │              │      Output formats (Exe, Ps1, CSharp, Dll)           │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  3. DELIVER  │  [3] Phishing Toolkit (future)                        │
+│  3. DELIVER  │  [3] KASTURI (the lure)                               │
 │              │      Email templates, macro/HTA/LNK/ISO packaging     │
-│              │  [1] Badang — Loader module                            │
+│              │      Landing page cloner, delivery tracking            │
+│              │  [1] BADANG — Loader module                            │
 │              │      Anti-sandbox, anti-debug, anti-VM, staged fetch   │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  4. EXPLOIT  │  [1] Badang — Loader + Evasion                        │
+│  4. EXPLOIT  │  [1] BADANG — Loader + Evasion                        │
 │              │      Sandbox detection, anti-debug, in-memory exec     │
 │              │      ETW patching, AMSI bypass, indirect syscalls      │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  5. INSTALL  │  [1] Badang — Injection + Persistence                 │
+│  5. INSTALL  │  [1] BADANG — Injection + Persistence                 │
 │              │      8 injection techniques (CRT, APC, hijack, early   │
 │              │      bird, section map, callback, stomp, hollowing)    │
 │              │      6 persistence methods (registry, schtask, WMI,    │
@@ -61,16 +60,16 @@ Future additions (separate projects):
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  6. C2       │  [1] Badang — Comms module (target-side)              │
+│  6. C2       │  [1] BADANG — Comms module (target-side)              │
 │              │      Beacon loop, jitter, HTTPS/DNS/SMB channels,     │
 │              │      RC4 transport encryption                          │
-│              │  [2] Jebat (attacker-side)                            │
+│              │  [2] JEBAT (the commander, attacker-side)             │
 │              │      Listeners, task queue, operator web UI,           │
 │              │      implant tracking, payload builder                 │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  7. ACTIONS  │  [1] Badang — Post-ex modules (9 modules)              │
+│  7. ACTIONS  │  [1] BADANG — Post-ex modules (9 modules)             │
 │              │      Credentials — LSASS dump, SAM/SYSTEM, tokens     │
 │              │      Lateral    — PsExec, WMI, WinRM                  │
 │              │      Exfil      — staged TCP, 64KB chunks, RC4        │
@@ -78,7 +77,7 @@ Future additions (separate projects):
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  EVASION     │  [1] Badang — active throughout every stage           │
+│  EVASION     │  [1] BADANG — active throughout every stage           │
 │  (all        │      XOR string obfuscation (8-byte key)              │
 │   stages)    │      Dynamic API resolution (clean IAT)               │
 │              │      String sanitization (no flagged keywords)         │
@@ -96,42 +95,58 @@ Future additions (separate projects):
 ## Architecture
 
 ```
-TARGET MACHINE                              ATTACKER MACHINE
-──────────────                              ────────────────
+ATTACKER MACHINE                                            TARGET MACHINE
+────────────────                                            ──────────────
 
-┌─────────────────────────────────┐
-│          BADANG (main)          │
-│                                 │
-│  ┌──────────┐  ┌─────────────┐ │
-│  │ Loader   │  │ Evasion     │ │
-│  │ anti-sb  │  │ ETW/AMSI    │ │
-│  │ anti-dbg │  │ sleep obfs  │ │         ┌──────────────────┐
-│  │ anti-vm  │  │ stack spoof │ │         │   JEBAT           │
-│  └────┬─────┘  └──────┬──────┘ │         │   (C2 server)    │
-│       │               │        │         │                  │
-│  ┌────▼───────────────▼──────┐ │  HTTPS  │  ┌────────────┐ │
-│  │ Injection (8 techniques)  │ │ ◄──────►│  │ Listeners  │ │
-│  └────────────┬──────────────┘ │  DNS    │  │ Task Queue │ │
-│               │                │  SMB    │  │ Web UI     │ │
-│  ┌────────────▼──────────────┐ │         │  │ Tracking   │ │
-│  │ Comms (beacon loop)       │─┼─────────┼──┤            │ │
-│  │ HTTPS / DNS / SMB channel │ │         │  └────────────┘ │
-│  │ RC4 transport              │ │         │                  │
-│  └────────────┬──────────────┘ │         └──────────────────┘
-│               │                │
-│  ┌────────────▼──────────────┐ │
-│  │ Persistence (6 methods)   │ │
-│  └────────────┬──────────────┘ │
-│               │                │
-│  ┌────────────▼──────────────┐ │
-│  │ Post-Ex modules           │ │
-│  │ creds │ lateral │ exfil   │ │
-│  │ tunnel │ ...              │ │
-│  └───────────────────────────┘ │
-│                                 │
-│  Payload gen + packaging        │
-│  (builds output for delivery)   │
-└─────────────────────────────────┘
+┌──────────────────┐
+│  LEKIR (recon)   │
+│  subdomain enum  │
+│  email harvest   │
+│  tech fingerprint│
+│  breach lookup   │
+└────────┬─────────┘
+         │  targets
+         ▼
+┌──────────────────┐
+│ KASTURI (phish)  │
+│ email templates  │
+│ macro/HTA/LNK   │
+│ landing pages    │
+│ delivery track   │
+└────────┬─────────┘
+         │  payload
+         ▼
+┌──────────────────┐                            ┌─────────────────────────────────┐
+│  JEBAT (C2)      │                            │          BADANG (implant)       │
+│                  │                            │                                 │
+│  ┌────────────┐ │                            │  ┌──────────┐  ┌─────────────┐ │
+│  │ Listeners  │ │  HTTPS                     │  │ Loader   │  │ Evasion     │ │
+│  │  HTTPS     │ │◄──────────────────────────►│  │ anti-sb  │  │ ETW/AMSI    │ │
+│  │  DNS       │ │  DNS                       │  │ anti-dbg │  │ sleep obfs  │ │
+│  │  SMB       │ │  SMB                       │  │ anti-vm  │  │ stack spoof │ │
+│  ├────────────┤ │  RC4 encrypted             │  └────┬─────┘  └──────┬──────┘ │
+│  │ Task Queue │ │                            │       │               │        │
+│  │ Implant DB │ │                            │  ┌────▼───────────────▼──────┐ │
+│  │ File Store │ │                            │  │ Injection (8 techniques)  │ │
+│  │ Event Bus  │ │                            │  └────────────┬──────────────┘ │
+│  ├────────────┤ │                            │               │                │
+│  │ Operator   │ │                            │  ┌────────────▼──────────────┐ │
+│  │  Web UI    │ │                            │  │ Comms (beacon loop)       │ │
+│  │  CLI       │ │                            │  │ RC4 transport              │ │
+│  │  Builder   │ │                            │  └────────────┬──────────────┘ │
+│  └────────────┘ │                            │               │                │
+└──────────────────┘                            │  ┌────────────▼──────────────┐ │
+                                                │  │ Persistence (6 methods)   │ │
+                                                │  └────────────┬──────────────┘ │
+                                                │               │                │
+                                                │  ┌────────────▼──────────────┐ │
+                                                │  │ Post-Ex (9 modules)       │ │
+                                                │  │ creds │ lateral │ exfil   │ │
+                                                │  │ socks │ portfwd           │ │
+                                                │  └───────────────────────────┘ │
+                                                │                                 │
+                                                │  Payload gen + packaging        │
+                                                └─────────────────────────────────┘
 ```
 
 ---
@@ -418,24 +433,211 @@ Transport: RC4 encrypt the entire message body with the shared hex key. HTTPS wr
 
 ---
 
+## Kasturi — Phishing Toolkit
+
+Separate repository (`kasturi/`). Delivery platform — crafts and sends the lure that gets Badang onto the target. Named after Hang Kasturi — kasturi means "musk", the scent that draws you in.
+
+**Runs on:** Attacker machine (Linux/macOS/Windows)
+
+### Architecture
+
+```
+kasturi/
+├── server/                  Rust backend
+│   ├── campaigns/           Campaign management (create, schedule, track, report)
+│   ├── templates/           Email template engine (HTML + plaintext, variable substitution)
+│   ├── payloads/            Payload packaging (macro, HTA, LNK, ISO, VBS, OneNote)
+│   ├── cloner/              Landing page cloner (fetch, rewrite links, host)
+│   ├── tracking/            Open tracking (pixel), click tracking (redirect), download tracking
+│   ├── smtp/                SMTP sender (direct, relay, provider API), DKIM signing
+│   ├── api/                 REST API for web UI
+│   └── main.rs              Server entrypoint
+├── web/                     Operator dashboard
+│   ├── Campaigns.tsx        Campaign builder — target list, template, payload, schedule
+│   ├── Templates.tsx        Email template editor (live preview, variable list)
+│   ├── Payloads.tsx         Payload builder — select type, embed Badang stager, preview
+│   ├── Cloner.tsx           URL input → cloned page preview → host config
+│   ├── Results.tsx          Campaign results — opened, clicked, downloaded, by target
+│   └── Domains.tsx          Sending domain management, DNS record checker
+└── config/
+    └── kasturi.toml         SMTP config, tracking domain, TLS certs
+```
+
+### Core Components
+
+| Component | What |
+|-----------|------|
+| **Campaign Engine** | Create campaigns: target list (CSV/manual), template, payload attachment, schedule (immediate/delayed/drip). Track per-target status: sent, opened, clicked, downloaded. |
+| **Template Engine** | HTML email templates with variable substitution (`{{first_name}}`, `{{company}}`, `{{tracking_url}}`). Plaintext fallback. Import/export. Library of presets (invoice, delivery, IT alert, meeting). |
+| **Payload Packager** | Wrap Badang stager in delivery formats: Office macro (.docm/.xlsm), HTA, LNK, ISO/IMG, VBS, OneNote (.one), HTML smuggling. Each format embeds the encrypted payload with auto-execute or one-click trigger. |
+| **Landing Page Cloner** | Input a URL → fetch page + assets → rewrite links to point at Kasturi → host as a credential capture page. Captured creds logged per campaign. |
+| **Tracking** | Invisible 1x1 tracking pixel (email open), redirect link (click tracking), download beacon (payload execution). All events tied to campaign + target. |
+| **SMTP** | Direct send, relay via provider (SendGrid, Mailgun, AWS SES), or custom SMTP. DKIM signing, SPF-aware sending domain rotation. |
+
+### Build Phases
+
+| Phase | What |
+|-------|------|
+| 1 | Campaign engine + SMTP sender + email templates |
+| 2 | Payload packager (macro, HTA, LNK) |
+| 3 | Landing page cloner + credential capture |
+| 4 | Tracking (open, click, download) + results dashboard |
+| 5 | Extended payloads (ISO, HTML smuggling, OneNote) |
+| 6 | Domain management + DNS health checker |
+
+### Tech Stack
+
+| Layer | Choice | Reason |
+|-------|--------|--------|
+| Language | Rust | Consistent with ecosystem, async SMTP via lettre |
+| HTTP framework | axum | Same as Jebat, shared patterns |
+| Email | lettre | Rust SMTP client, DKIM support |
+| Template | tera | Jinja2-style templating, good for email HTML |
+| Frontend | React + TypeScript | Same as Jebat |
+| Clone engine | reqwest + scraper | Fetch + parse + rewrite HTML |
+
+---
+
+## Lekir — Recon/OSINT
+
+Separate repository (`lekir/`). Intelligence gathering — maps the target's attack surface before anything else runs. Named after Hang Lekir — the scout who gathers information before the fight.
+
+**Runs on:** Attacker machine (Linux/macOS/Windows)
+
+### Architecture
+
+```
+lekir/
+├── core/                    Rust backend
+│   ├── domains/             Domain intelligence
+│   │   ├── subdomains.rs    Subdomain enumeration (brute, cert transparency, DNS records)
+│   │   ├── dns.rs           DNS record lookup (A, AAAA, MX, TXT, NS, CNAME, SOA)
+│   │   ├── whois.rs         WHOIS lookup + registrar info
+│   │   └── certs.rs         Certificate transparency log search (crt.sh)
+│   ├── people/              People intelligence
+│   │   ├── emails.rs        Email harvesting (Hunter, public sources, pattern guessing)
+│   │   ├── social.rs        Social media profile discovery (LinkedIn, GitHub, Twitter)
+│   │   └── breaches.rs      Breach database lookup (HaveIBeenPwned, DeHashed)
+│   ├── infra/               Infrastructure intelligence
+│   │   ├── ports.rs         Port scanning (TCP connect, SYN where available)
+│   │   ├── services.rs      Service fingerprinting (banner grab, version detect)
+│   │   ├── tech.rs          Technology stack detection (Wappalyzer-style, headers, response)
+│   │   └── cloud.rs         Cloud asset discovery (S3 buckets, Azure blobs, GCP storage)
+│   ├── passive/             Passive collection
+│   │   ├── shodan.rs        Shodan API integration
+│   │   ├── censys.rs        Censys API integration
+│   │   └── archive.rs       Wayback Machine URL scraping
+│   ├── report/              Output + reporting
+│   │   ├── json.rs          Machine-readable JSON output
+│   │   ├── html.rs          HTML report with charts and tables
+│   │   └── feed.rs          Live output feed to Kasturi (target lists) and Jebat (infra map)
+│   └── main.rs              CLI entrypoint
+├── web/                     Web dashboard (optional)
+│   ├── Targets.tsx          Target organization management
+│   ├── Domains.tsx          Domain tree view — subs, DNS, certs, ports
+│   ├── People.tsx           Email/social discovery results
+│   ├── Infra.tsx            Infrastructure map — IPs, ports, services, tech stack
+│   └── Reports.tsx          Generated reports, export
+└── config/
+    ├── lekir.toml           API keys (Shodan, Censys, Hunter), scan config
+    └── wordlists/           Subdomain brute-force wordlists
+```
+
+### Core Components
+
+| Component | What |
+|-----------|------|
+| **Subdomain Enum** | Multi-source: DNS brute-force (wordlist), certificate transparency (crt.sh), search engine dorking, DNS zone transfer attempt, recursive CNAME/NS following. |
+| **Email Harvest** | Pattern-based guessing (first.last, flast, firstl), Hunter.io API, LinkedIn scraping, public document metadata (PDF/DOCX author fields), PGP key servers. |
+| **Tech Fingerprint** | HTTP response analysis: headers (Server, X-Powered-By), HTML meta tags, JavaScript library detection, cookie names, favicon hash. Wappalyzer-compatible rule engine. |
+| **Port Scan** | TCP connect scan (default), SYN scan (Linux, requires root). Service banner grabbing on open ports. Configurable port ranges and rate limiting. |
+| **Breach Lookup** | HaveIBeenPwned API, DeHashed API. Checks discovered emails against breach databases. Reports which services were compromised and when. |
+| **Cloud Discovery** | Brute-force S3 bucket names (`target-backup`, `target-dev`, etc.), Azure blob containers, GCP storage buckets. Check for public access misconfigurations. |
+| **Report Engine** | Aggregate all findings into JSON (machine-readable, feeds into Kasturi/Jebat) or HTML (operator-readable, charts + tables). Auto-generate target email list for Kasturi campaigns. |
+
+### Build Phases
+
+| Phase | What |
+|-------|------|
+| 1 | Subdomain enum (brute + cert transparency + DNS) + DNS record lookup |
+| 2 | Email harvesting (pattern guess + Hunter API + public sources) |
+| 3 | Port scanning + service fingerprint + tech stack detection |
+| 4 | Breach lookup (HIBP + DeHashed) + social profile discovery |
+| 5 | Cloud asset discovery (S3, Azure, GCP) + passive collection (Shodan, Censys) |
+| 6 | Report engine (JSON + HTML) + live feed to Kasturi/Jebat |
+
+### Tech Stack
+
+| Layer | Choice | Reason |
+|-------|--------|--------|
+| Language | Rust | Async I/O for concurrent scanning, same ecosystem |
+| HTTP | reqwest | Async HTTP client for API calls and web scraping |
+| DNS | trust-dns / hickory-dns | Async DNS resolver, supports all record types |
+| Concurrency | tokio | Async runtime, rate-limited task spawning |
+| Output | serde_json + tera | JSON export + HTML report templating |
+| Frontend | React + TypeScript (optional) | Web dashboard, same stack as Jebat/Kasturi |
+
+---
+
+## Where Each Project Runs
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│  ATTACKER MACHINE (Linux/macOS/Windows)                         │
+│                                                                 │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐               │
+│  │   LEKIR    │  │  KASTURI   │  │   JEBAT    │               │
+│  │   recon    │─►│  phishing  │  │  C2 server │               │
+│  │            │  │            │  │            │               │
+│  │ runs here  │  │ runs here  │  │ runs here  │               │
+│  └────────────┘  └─────┬──────┘  └──────┬─────┘               │
+│                        │                │                      │
+└────────────────────────┼────────────────┼──────────────────────┘
+                         │  delivers      │  commands
+                         │  payload       │  (HTTPS/DNS/SMB)
+                         ▼                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│  TARGET MACHINE (Windows)                                       │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────┐      │
+│  │                     BADANG                            │      │
+│  │                     implant                           │      │
+│  │                                                       │      │
+│  │  loader → evasion → inject → persist → comms → postex │      │
+│  │                                                       │      │
+│  │  runs here (the only project that touches the target) │      │
+│  └──────────────────────────────────────────────────────┘      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Build Order
 
-| Phase | What | Project | Status |
-|-------|------|---------|--------|
-| 1 | Core platform (8 inject, 6 persist, stager, packaging, evasion, syscalls) | Badang | **Done** |
-| 2 | Comms module (beacon loop + HTTPS channel + RC4 transport) | Badang | **Done** |
-| 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | **Done** |
-| 4 | Post-ex: credentials + lateral movement | Badang | **Done** |
-| 5 | Post-ex: exfiltration + tunneling | Badang | **Done** |
-| 6 | Core server + HTTPS listener | Jebat | Planned |
-| 7 | Operator web UI | Jebat | Planned |
-| 8 | File operations + loot management | Jebat | Planned |
-| 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Planned |
-| 10 | DNS + SMB listeners | Jebat | Planned |
-| 11 | Operator CLI + implant builder | Jebat | Planned |
-| 12 | Phishing toolkit + Recon/OSINT | New projects | Future |
+| Phase | What | Project | Runs On | Status |
+|-------|------|---------|---------|--------|
+| 1 | Core platform (8 inject, 6 persist, stager, packaging, evasion, syscalls) | Badang | Target (Windows) | **Done** |
+| 2 | Comms module (beacon loop + HTTPS channel + RC4 transport) | Badang | Target (Windows) | **Done** |
+| 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | Target (Windows) | **Done** |
+| 4 | Post-ex: credentials + lateral movement | Badang | Target (Windows) | **Done** |
+| 5 | Post-ex: exfiltration + tunneling | Badang | Target (Windows) | **Done** |
+| 6 | Core server + HTTPS listener | Jebat | Attacker (Linux/macOS/Win) | Planned |
+| 7 | Operator web UI | Jebat | Attacker (Linux/macOS/Win) | Planned |
+| 8 | File operations + loot management | Jebat | Attacker (Linux/macOS/Win) | Planned |
+| 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Attacker (Linux/macOS/Win) | Planned |
+| 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | Planned |
+| 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | Planned |
+| 12 | Campaign engine + SMTP + templates | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 13 | Payload packager + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 14 | Tracking + results dashboard | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 15 | Subdomain enum + DNS + email harvest | Lekir | Attacker (Linux/macOS/Win) | Planned |
+| 16 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
+| 17 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
 
-Badang is complete — Jebat is the next project to build.
+Badang is complete. Build order: Jebat → Kasturi → Lekir.
 
 ---
 
@@ -446,16 +648,21 @@ All projects follow the patterns established in Badang:
 | Principle | Implementation |
 |-----------|---------------|
 | **Language** | Rust — memory safety, small binaries, no runtime dependency |
+| **Safety** | Dry-run by default, explicit confirmation for live/destructive ops |
+| **Dual interface** | CLI for automation, web UI for interactive use |
+| **Cross-platform** | Badang: cross-compile to Windows from Linux. Jebat/Kasturi/Lekir: native Linux/macOS/Windows |
+| **CI/CD** | GitHub Actions — fmt, clippy, test, audit, cross-compile, artifact upload |
+
+Badang-specific (target-side only):
+
+| Principle | Implementation |
+|-----------|---------------|
 | **String obfuscation** | Multi-byte XOR at compile time, decrypt at runtime |
 | **API resolution** | Dynamic via GetModuleHandleA + GetProcAddress |
 | **IAT hygiene** | Minimal imports — only bootstrap functions visible |
 | **String sanitization** | No offensive keywords in compiled binary |
 | **PE metadata** | Version info, manifest, icon — look like a normal app |
 | **Release profile** | `strip`, `lto`, `opt-level = 3`, `codegen-units = 1`, `panic = abort` |
-| **Safety** | Dry-run by default, explicit confirmation for live ops |
-| **Dual interface** | CLI for automation, native GUI for interactive use |
-| **Cross-compile** | Build Windows binaries from Linux via mingw-w64 |
-| **CI/CD** | GitHub Actions — fmt, clippy, test, audit, cross-compile, artifact upload |
 | **Defender bypass** | Every binary passes static analysis out of the box |
 
 ---
