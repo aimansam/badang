@@ -8,7 +8,7 @@ Four projects cover the full kill chain, named after the legendary Malay warrior
 
 | # | Project | Named After | Role | Status |
 |---|---------|-------------|------|--------|
-| 1 | **Badang** | Hang Badang — the strongman | Implant — evasion, injection, persistence, comms, loader, post-ex | All phases complete |
+| 1 | **Badang** | Hang Badang — the strongman | **Dual role:** attacker-side (generate, encrypt, convert, package) + target-side implant (loader, evasion, inject, persist, comms, post-ex) | All phases complete |
 | 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | Planned |
 | 3 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
 | 4 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
@@ -31,17 +31,17 @@ The fifth warrior — **Hang Tuah**, the greatest of them all — is reserved fo
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  2. WEAPON-  │  [1] BADANG (the strongman)                           │
-│     IZE      │      Payload generation (exec, reverse, bind, stager) │
-│              │      Payload encryption (XOR/RC4 + PIC stubs)         │
-│              │      Output formats (Exe, Ps1, CSharp, Dll)           │
+│  2. WEAPON-  │  [1] BADANG (the strongman) ⚡ RUNS ON ATTACKER       │
+│     IZE      │      badang-cli generate (exec, reverse, bind, stager)│
+│              │      badang-cli encrypt (XOR/RC4 + PIC stubs)         │
+│              │      badang-cli package (Exe, Ps1, CSharp, Dll)       │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  3. DELIVER  │  [3] KASTURI (the lure)                               │
-│              │      Email templates, macro/HTA/LNK/ISO packaging     │
+│  3. DELIVER  │  [3] KASTURI (the lure) — takes Badang-generated       │
+│              │      payloads, wraps in macro/HTA/LNK/ISO packaging   │
 │              │      Landing page cloner, delivery tracking            │
-│              │  [1] BADANG — Loader module                            │
+│              │  [1] BADANG — Loader module (runs on TARGET)           │
 │              │      Anti-sandbox, anti-debug, anti-VM, staged fetch   │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
@@ -116,26 +116,31 @@ ATTACKER MACHINE                                            TARGET MACHINE
 └────────┬─────────┘
          │  payload
          ▼
-┌──────────────────┐                            ┌─────────────────────────────────┐
-│  JEBAT (C2)      │                            │          BADANG (implant)       │
-│                  │                            │                                 │
-│  ┌────────────┐ │                            │  ┌──────────┐  ┌─────────────┐ │
-│  │ Listeners  │ │  HTTPS                     │  │ Loader   │  │ Evasion     │ │
-│  │  HTTPS     │ │◄──────────────────────────►│  │ anti-sb  │  │ ETW/AMSI    │ │
-│  │  DNS       │ │  DNS                       │  │ anti-dbg │  │ sleep obfs  │ │
-│  │  SMB       │ │  SMB                       │  │ anti-vm  │  │ stack spoof │ │
-│  ├────────────┤ │  RC4 encrypted             │  └────┬─────┘  └──────┬──────┘ │
-│  │ Task Queue │ │                            │       │               │        │
-│  │ Implant DB │ │                            │  ┌────▼───────────────▼──────┐ │
-│  │ File Store │ │                            │  │ Injection (8 techniques)  │ │
-│  │ Event Bus  │ │                            │  └────────────┬──────────────┘ │
-│  ├────────────┤ │                            │               │                │
-│  │ Operator   │ │                            │  ┌────────────▼──────────────┐ │
-│  │  Web UI    │ │                            │  │ Comms (beacon loop)       │ │
-│  │  CLI       │ │                            │  │ RC4 transport              │ │
+┌──────────────────┐  ┌──────────────────┐
+│  JEBAT (C2)      │  │ BADANG (builder) │
+│                  │  │                  │
+│  ┌────────────┐ │  │  generate        │
+│  │ Listeners  │ │  │  encrypt         │
+│  │  HTTPS     │ │  │  convert         │      ┌─────────────────────────────────┐
+│  │  DNS       │ │  │  package         │      │       BADANG (implant)          │
+│  │  SMB       │ │  │  (Exe/Ps1/       │      │                                 │
+│  ├────────────┤ │  │   CSharp/Dll)    │      │  ┌──────────┐  ┌─────────────┐ │
+│  │ Task Queue │ │  └────────┬─────────┘      │  │ Loader   │  │ Evasion     │ │
+│  │ Implant DB │ │           │  binary        │  │ anti-sb  │  │ ETW/AMSI    │ │
+│  │ File Store │ │           └───────────────►│  │ anti-dbg │  │ sleep obfs  │ │
+│  │ Event Bus  │ │  HTTPS                     │  │ anti-vm  │  │ stack spoof │ │
+│  ├────────────┤ │◄──────────────────────────►│  └────┬─────┘  └──────┬──────┘ │
+│  │ Operator   │ │  DNS                       │       │               │        │
+│  │  Web UI    │ │  SMB                       │  ┌────▼───────────────▼──────┐ │
+│  │  CLI       │ │  RC4 encrypted             │  │ Injection (8 techniques)  │ │
 │  │  Builder   │ │                            │  └────────────┬──────────────┘ │
 │  └────────────┘ │                            │               │                │
 └──────────────────┘                            │  ┌────────────▼──────────────┐ │
+                                                │  │ Comms (beacon loop)       │ │
+                                                │  │ RC4 transport              │ │
+                                                │  └────────────┬──────────────┘ │
+                                                │               │                │
+                                                │  ┌────────────▼──────────────┐ │
                                                 │  │ Persistence (6 methods)   │ │
                                                 │  └────────────┬──────────────┘ │
                                                 │               │                │
@@ -145,7 +150,6 @@ ATTACKER MACHINE                                            TARGET MACHINE
                                                 │  │ socks │ portfwd           │ │
                                                 │  └───────────────────────────┘ │
                                                 │                                 │
-                                                │  Payload gen + packaging        │
                                                 └─────────────────────────────────┘
 ```
 
@@ -155,7 +159,7 @@ ATTACKER MACHINE                                            TARGET MACHINE
 
 ### Phase 1: Core Platform (DONE)
 
-All shipped and pushed. Badang is the weaponize + exploit + install platform.
+All shipped and pushed. Badang has a dual role: the CLI runs on the **attacker machine** (generate, encrypt, convert, package) to produce binaries, while those binaries run on the **target machine** (loader, evasion, inject, persist, comms, post-ex).
 
 | Module | What | Status |
 |--------|------|--------|
@@ -593,21 +597,26 @@ lekir/
 │  │ runs here  │  │ runs here  │  │ runs here  │               │
 │  └────────────┘  └─────┬──────┘  └──────┬─────┘               │
 │                        │                │                      │
-└────────────────────────┼────────────────┼──────────────────────┘
-                         │  delivers      │  commands
-                         │  payload       │  (HTTPS/DNS/SMB)
-                         ▼                ▼
+│  ┌─────────────────────┴────────────────┘                      │
+│  │  BADANG (builder side)                                      │
+│  │  generate, encrypt, convert, package                        │
+│  │  runs here — produces the binary that runs on target        │
+│  └────────┬────────────────────────────────────────────────┐   │
+│           │                                                │   │
+└───────────┼────────────────────────────────────────────────┼───┘
+            │  delivers payload          commands            │
+            │  (email/USB/web)           (HTTPS/DNS/SMB)     │
+            ▼                                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                                                                 │
 │  TARGET MACHINE (Windows)                                       │
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────┐      │
-│  │                     BADANG                            │      │
-│  │                     implant                           │      │
+│  │                BADANG (implant side)                   │      │
 │  │                                                       │      │
 │  │  loader → evasion → inject → persist → comms → postex │      │
 │  │                                                       │      │
-│  │  runs here (the only project that touches the target) │      │
+│  │  runs here (the only code that touches the target)    │      │
 │  └──────────────────────────────────────────────────────┘      │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -619,7 +628,7 @@ lekir/
 
 | Phase | What | Project | Runs On | Status |
 |-------|------|---------|---------|--------|
-| 1 | Core platform (8 inject, 6 persist, stager, packaging, evasion, syscalls) | Badang | Target (Windows) | **Done** |
+| 1 | Core platform (8 inject, 6 persist, stager, packaging, evasion, syscalls) | Badang | Attacker (build) + Target (run) | **Done** |
 | 2 | Comms module (beacon loop + HTTPS channel + RC4 transport) | Badang | Target (Windows) | **Done** |
 | 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | Target (Windows) | **Done** |
 | 4 | Post-ex: credentials + lateral movement | Badang | Target (Windows) | **Done** |
