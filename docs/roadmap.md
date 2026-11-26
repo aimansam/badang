@@ -8,7 +8,7 @@ Two projects cover the full kill chain. Badang is the main project — everythin
 
 | # | Project | Role | Status |
 |---|---------|------|--------|
-| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | Phase 3 complete, expanding |
+| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | Phase 4 complete, expanding |
 | 2 | **C2 Server** (next) | Attacker-side — listeners, task queue, operator web UI | Planned |
 
 Future additions (separate projects):
@@ -205,16 +205,27 @@ src/loader/
 | VM | Registry `HKLM\SOFTWARE\VMware` / `VirtualBox` / `Hyper-V` |
 | VM | MAC prefix `00:0C:29` (VMware), `08:00:27` (VBox), `00:15:5D` (Hyper-V) |
 
-### Phase 4: Post-Exploitation — Credentials + Lateral
+### Phase 4: Post-Exploitation — Credentials + Lateral (DONE)
 
-First post-ex capabilities, loaded on demand by the comms module.
+Post-ex capabilities with credential harvesting and lateral movement.
 
 ```
 src/postex/
-  mod.rs       — module loader, result formatting
-  creds.rs     — LSASS dump (MiniDumpWriteDump via direct syscall), SAM, token manipulation
-  lateral.rs   — PsExec (service-based), WMI exec, WinRM, pass-the-hash
+  mod.rs       — PostExModule enum (6 variants), dispatch, dry_run, print_info
+  creds.rs     — LSASS dump (MiniDumpWriteDump), SAM/SYSTEM export, token delegation
+  lateral.rs   — PsExec (service-based), WMI exec, WinRM exec
 ```
+
+| Module | Technique |
+|--------|-----------|
+| Memory Snapshot | SeDebugPrivilege → OpenProcess → MiniDumpWriteDump |
+| Registry Export | reg.exe save HKLM\SAM + HKLM\SYSTEM |
+| Session Delegation | OpenProcessToken → DuplicateTokenEx → ImpersonateLoggedOnUser |
+| Remote Service | WNetAddConnection2A → CopyFileA → CreateServiceA → StartServiceA |
+| Remote Execution (WMI) | wmic /node:target process call create |
+| Remote Execution (WinRM) | winrs -r:target command |
+
+Comms protocol extended with task types 4–7 (FileUpload, FileDownload, CredDump, LateralMove).
 
 ### Phase 5: Post-Exploitation — Exfil + Tunnel
 
@@ -268,7 +279,7 @@ The C2 server must implement Badang's binary wire protocol (see `src/comms/proto
 | 2 | Comms module (beacon loop + HTTPS channel + RC4 transport) | Badang | **Done** |
 | 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | **Done** |
 | 4 | C2 Server (listeners + task queue + web UI) | badang-c2 | Planned |
-| 5 | Post-ex: credentials + lateral movement | Badang | Planned |
+| 5 | Post-ex: credentials + lateral movement | Badang | **Done** |
 | 6 | Post-ex: exfiltration + tunneling | Badang | Planned |
 | 7 | Phishing toolkit + Recon/OSINT | New projects | Future |
 

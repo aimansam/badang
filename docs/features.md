@@ -178,6 +178,23 @@ Configurable fail action: report only, or terminate on detection.
 
 Usage: `badang-cli loader --check all -x -c`
 
+## Post-Exploitation (Credentials + Lateral Movement)
+
+Credential harvesting and lateral movement modules, loaded on demand.
+
+| Module | Technique | Description |
+|--------|-----------|-------------|
+| Memory Snapshot | MiniDumpWriteDump | SeDebugPrivilege → OpenProcess → dump target process memory to file |
+| Registry Export | reg.exe save | Export SAM and SYSTEM hives for offline extraction |
+| Session Delegation | DuplicateTokenEx | Open target token → duplicate → assume identity |
+| Remote Service | PsExec pattern | WNetAddConnection2A → CopyFileA → CreateServiceA → StartServiceA → cleanup |
+| Remote Execution (WMI) | wmic process call create | Execute command on remote host via WMI |
+| Remote Execution (WinRM) | winrs | Execute command on remote host via WinRM |
+
+Comms protocol extended with task types 4–7 (FileUpload, FileDownload, CredDump, LateralMove).
+
+Usage: `badang-cli postex --module lsass --pid 672 --postex-output dump.bin -x -c`
+
 ## PE Helpers
 
 Shared module (`src/pe.rs`) for PE parsing: export table walking, .text section finding, byte pattern scanning. Used by indirect syscalls (`src/syscall/indirect.rs`), module stomping (`src/injection/stomp.rs`), and stack spoofing (`src/evasion/stack_spoof.rs`).

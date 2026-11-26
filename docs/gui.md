@@ -52,6 +52,9 @@ Select channel from dropdown (Secure Web Channel / Name Resolution Channel / Net
 ### Loader
 Select check category from dropdown (Full Analysis / Environment Analysis / Process Inspection / Hardware Fingerprint). Select fail action (Report Only / Terminate on Detection). Dry run shows the check sequence; live mode runs checks and displays results as CLEAN or FLAGGED per check with detail text. Info button lists all check categories.
 
+### PostEx
+Select post-exploitation module from dropdown (Memory Snapshot / Registry Export / Session Delegation / Remote Service / Remote Execution WMI / Remote Execution WinRM). Fields change based on selection — credential modules show PID and output path, lateral modules show remote host, credentials, command/payload. Dry run shows the step sequence; live mode executes and displays results. Info button lists all modules.
+
 ## Log Panel
 
 Bottom panel. Shows all output — scan results, hex dumps, errors. Click **Clear** to reset.

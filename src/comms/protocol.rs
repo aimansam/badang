@@ -10,6 +10,10 @@ pub enum TaskType {
     Shell = 1,
     SleepChange = 2,
     Exit = 3,
+    FileUpload = 4,
+    FileDownload = 5,
+    CredDump = 6,
+    LateralMove = 7,
 }
 
 impl TaskType {
@@ -19,9 +23,31 @@ impl TaskType {
             1 => Some(Self::Shell),
             2 => Some(Self::SleepChange),
             3 => Some(Self::Exit),
+            4 => Some(Self::FileUpload),
+            5 => Some(Self::FileDownload),
+            6 => Some(Self::CredDump),
+            7 => Some(Self::LateralMove),
             _ => None,
         }
     }
+}
+
+pub fn parse_file_upload(data: &[u8]) -> Result<(String, Vec<u8>), String> {
+    if data.len() < 4 { return Err("truncated file upload".into()); }
+    let path_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    if data.len() < 4 + path_len { return Err("truncated file path".into()); }
+    let path = String::from_utf8_lossy(&data[4..4 + path_len]).to_string();
+    let contents = data[4 + path_len..].to_vec();
+    Ok((path, contents))
+}
+
+pub fn serialize_file_download(path: &str, contents: &[u8]) -> Vec<u8> {
+    let path_bytes = path.as_bytes();
+    let mut buf = Vec::with_capacity(4 + path_bytes.len() + contents.len());
+    buf.extend_from_slice(&(path_bytes.len() as u32).to_le_bytes());
+    buf.extend_from_slice(path_bytes);
+    buf.extend_from_slice(contents);
+    buf
 }
 
 #[derive(Debug, Clone)]

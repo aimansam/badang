@@ -558,6 +558,40 @@ fn main() {
                 }
             }
         }
+        "postex" => {
+            if cli.dry_run {
+                if cli.postex_module.is_empty() {
+                    badang::postex::print_info(&log);
+                } else {
+                    let module = badang::postex::PostExModule::from_str(&cli.postex_module)
+                        .unwrap_or_else(|e| { eprintln!("ERROR: {}", e); process::exit(1); });
+                    badang::postex::dry_run(&module, &log);
+                }
+            } else {
+                let module = badang::postex::PostExModule::from_str(&cli.postex_module)
+                    .unwrap_or_else(|e| { eprintln!("ERROR: {}", e); process::exit(1); });
+                let config = badang::postex::PostExConfig {
+                    module,
+                    pid: cli.target_pid,
+                    output: cli.postex_output.clone(),
+                    remote: cli.postex_remote.clone(),
+                    username: cli.postex_username.clone(),
+                    password: cli.postex_password.clone(),
+                    command: cli.postex_command.clone(),
+                    service_name: cli.postex_service.clone(),
+                    payload_path: cli.postex_payload.clone(),
+                };
+                match badang::postex::run_postex(&config, &log) {
+                    Ok(result) => {
+                        log.info(format!("  {}: {}", result.module, result.description));
+                    }
+                    Err(e) => {
+                        eprintln!("ERROR: {}", e);
+                        process::exit(1);
+                    }
+                }
+            }
+        }
         "loader" => {
             if cli.dry_run {
                 badang::loader::dry_run(&cli.loader_check, &log);

