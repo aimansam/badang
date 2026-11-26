@@ -1,6 +1,6 @@
 # Roadmap
 
-Two projects cover the full kill chain. Badang is the main project — everything that runs on the target. The C2 server is the next project — the attacker-side control plane.
+Two projects cover the full kill chain. Badang is the implant — everything that runs on the target. Jebat is the next project — the attacker-side command and control server.
 
 ---
 
@@ -8,8 +8,8 @@ Two projects cover the full kill chain. Badang is the main project — everythin
 
 | # | Project | Role | Status |
 |---|---------|------|--------|
-| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | All phases complete |
-| 2 | **C2 Server** (next) | Attacker-side — listeners, task queue, operator web UI | Planned |
+| 1 | **Badang** (implant) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | All phases complete |
+| 2 | **Jebat** (C2 server) | Attacker-side — listeners, task queue, implant management, operator web UI | Planned |
 
 Future additions (separate projects):
 
@@ -64,7 +64,7 @@ Future additions (separate projects):
 │  6. C2       │  [1] Badang — Comms module (target-side)              │
 │              │      Beacon loop, jitter, HTTPS/DNS/SMB channels,     │
 │              │      RC4 transport encryption                          │
-│              │  [2] C2 Server (attacker-side)                        │
+│              │  [2] Jebat (attacker-side)                            │
 │              │      Listeners, task queue, operator web UI,           │
 │              │      implant tracking, payload builder                 │
 │              │                                                       │
@@ -106,8 +106,8 @@ TARGET MACHINE                              ATTACKER MACHINE
 │  │ Loader   │  │ Evasion     │ │
 │  │ anti-sb  │  │ ETW/AMSI    │ │
 │  │ anti-dbg │  │ sleep obfs  │ │         ┌──────────────────┐
-│  │ anti-vm  │  │ stack spoof │ │         │   C2 SERVER      │
-│  └────┬─────┘  └──────┬──────┘ │         │   (next project) │
+│  │ anti-vm  │  │ stack spoof │ │         │   JEBAT           │
+│  └────┬─────┘  └──────┬──────┘ │         │   (C2 server)    │
 │       │               │        │         │                  │
 │  ┌────▼───────────────▼──────┐ │  HTTPS  │  ┌────────────┐ │
 │  │ Injection (8 techniques)  │ │ ◄──────►│  │ Listeners  │ │
@@ -247,35 +247,174 @@ Comms protocol extended with task types 8–10 (Exfil, SocksConnect, PortForward
 
 ---
 
-## C2 Server — Next Project
+## Jebat — C2 Server
 
-Separate repository. The attacker-side control plane that Badang's comms module talks to.
+Separate repository (`jebat/`). The attacker-side command and control server that Badang implants talk to. Named after Hang Jebat — the warrior who takes command.
+
+### Architecture
 
 ```
-badang-c2/
-├── server/              Rust backend
-│   ├── listeners/       HTTPS, DNS, SMB listener threads
-│   ├── tasks/           Task queue per implant (FIFO)
-│   ├── crypto/          Session key management, RC4
-│   ├── tracking/        Implant registry (ID, OS, user, last seen)
-│   └── api/             REST API for operator web UI
-├── web/                 Operator dashboard
-│   ├── implants/        Live implant table, status, last checkin
-│   ├── tasks/           Task builder, history, output viewer
-│   └── listeners/       Listener management (start/stop/config)
-└── builder/             Implant config generator
-    └── profiles/        Pre-built configs (stealth, noisy, pivot)
+jebat/
+├── server/                  Rust backend (axum)
+│   ├── listeners/           Protocol-specific listener threads
+│   │   ├── https.rs         HTTPS listener (TLS termination, RC4 wire protocol)
+│   │   ├── dns.rs           DNS listener (TXT record exfil, A record tasking)
+│   │   └── smb.rs           SMB named pipe listener
+│   ├── protocol/            Badang wire protocol implementation
+│   │   ├── wire.rs          Binary LE parser (checkin, task list, result)
+│   │   ├── crypto.rs        RC4 transport encryption/decryption
+│   │   └── tasks.rs         Task type definitions (must match Badang's 11 types)
+│   ├── core/                Core server logic
+│   │   ├── implants.rs      Implant registry (ID, OS, user, IP, last seen, config)
+│   │   ├── taskqueue.rs     Per-implant FIFO task queue
+│   │   ├── sessions.rs      Operator session management + auth
+│   │   └── events.rs        Event bus (implant checkin, task complete, listener state)
+│   ├── api/                 REST API for operator UI
+│   │   ├── implants.rs      GET /implants, GET /implants/:id, DELETE /implants/:id
+│   │   ├── tasks.rs         POST /tasks, GET /tasks/:id, GET /implants/:id/tasks
+│   │   ├── listeners.rs     POST /listeners, DELETE /listeners/:id, GET /listeners
+│   │   ├── files.rs         POST /files/upload, GET /files/:id/download
+│   │   ├── builder.rs       POST /builder/generate (implant config generator)
+│   │   └── ws.rs            WebSocket endpoint for real-time event push
+│   ├── storage/             Persistent storage
+│   │   ├── db.rs            SQLite (implants, tasks, events, files, operator logs)
+│   │   └── files.rs         File store (uploads, downloads, loot, screenshots)
+│   └── main.rs              Server entrypoint, config loading, signal handling
+├── web/                     Operator dashboard (React + TypeScript)
+│   ├── pages/
+│   │   ├── Dashboard.tsx    Overview — active implants, recent events, listener status
+│   │   ├── Implants.tsx     Implant table — sortable, filterable, real-time status
+│   │   ├── Interact.tsx     Single implant — shell, file browser, task history, info
+│   │   ├── Tasks.tsx        Global task queue — pending, running, completed, failed
+│   │   ├── Listeners.tsx    Listener management — start/stop/config per protocol
+│   │   ├── Files.tsx        File manager — uploads, downloads, loot organized by implant
+│   │   ├── Builder.tsx      Implant config generator — C2 URL, jitter, persistence
+│   │   └── Logs.tsx         Operator audit log — who did what, when
+│   └── components/
+│       ├── Terminal.tsx      Interactive shell (xterm.js, streams task output)
+│       ├── ImplantMap.tsx    Network topology graph (implant → pivot → implant)
+│       └── EventFeed.tsx     Real-time event sidebar (WebSocket-driven)
+├── cli/                     Operator CLI (alternative to web UI)
+│   └── main.rs              REPL — interact, task, listeners, same API as web
+└── config/
+    ├── jebat.toml           Server config (bind addr, TLS certs, DB path, auth)
+    └── profiles/            Pre-built implant profiles (stealth, noisy, pivot)
 ```
+
+### Core Components
 
 | Component | What |
 |-----------|------|
-| **Listeners** | HTTPS (TLS termination, RC4 wire protocol), DNS (planned), SMB (planned) |
-| **Task Queue** | Per-implant FIFO, task types: shell, upload, download, module load, config update |
-| **Implant Tracking** | ID, hostname, OS version, username, internal IP, last checkin, sleep interval |
-| **Operator UI** | Web dashboard — implant table, task builder, output viewer, listener management |
-| **Builder** | Generate Badang implant configs — C2 URL, channels, jitter, persistence method |
+| **Listeners** | Multi-protocol (HTTPS, DNS, SMB). Each runs in its own async task. Hot-start/stop without server restart. TLS via rustls with configurable certs. |
+| **Wire Protocol** | Must match Badang's `src/comms/protocol.rs` exactly — binary little-endian, 3 message types (checkin 0x01, task list 0x02, result 0x03), RC4 transport layer. |
+| **Task Queue** | Per-implant FIFO. 11 task types matching Badang: Nop, Shell, SleepChange, Exit, FileUpload, FileDownload, CredDump, LateralMove, Exfil, SocksConnect, PortForward. |
+| **Implant Registry** | Tracks: 16-byte agent ID, hostname, OS version, username, internal IP, external IP, last checkin time, sleep interval, jitter, active listener, implant version. |
+| **Event Bus** | Internal pub/sub for real-time updates. Events: implant_checkin, implant_new, implant_dead, task_queued, task_complete, task_failed, listener_start, listener_stop. Pushed to web UI via WebSocket. |
+| **Storage** | SQLite for structured data (implants, tasks, events). Filesystem for binary blobs (uploaded/downloaded files, loot). Operator audit trail for all actions. |
+| **Operator Auth** | Token-based auth. Multi-operator support. Role-based: admin (full), operator (task/interact), viewer (read-only). |
+| **Builder** | Generates Badang implant configs — embeds C2 URL, channel, jitter, interval, RC4 key, persistence method, loader checks. Outputs a ready-to-compile config block. |
 
-The C2 server must implement Badang's binary wire protocol (see `src/comms/protocol.rs`) and RC4 transport encryption. Built with the same Rust patterns as Badang (string obfuscation, dynamic resolve) for the implant-facing components. Server components can use standard Rust web frameworks (axum/actix).
+### Build Phases
+
+#### Phase 1: Core Server + HTTPS Listener
+
+Minimum viable C2 — accept Badang checkins and dispatch tasks.
+
+| Module | What |
+|--------|------|
+| HTTPS listener | TLS termination (rustls), parse Badang wire protocol, RC4 decrypt/encrypt |
+| Wire protocol | Implement checkin parsing, task list serialization, result parsing |
+| Implant registry | In-memory registry, track agent ID + metadata from checkin |
+| Task queue | Per-implant FIFO, shell task support |
+| REST API | Basic endpoints: list implants, queue task, get results |
+| SQLite storage | Schema: implants, tasks, task_results tables |
+| Server CLI | `jebat serve --config jebat.toml` — start listeners, bind API |
+
+**Verification:** Start Jebat, point a Badang implant at it, confirm checkin → shell task → result round-trip.
+
+#### Phase 2: Operator Web UI
+
+Interactive dashboard for real-time implant management.
+
+| Module | What |
+|--------|------|
+| Dashboard page | Active implant count, recent events, listener status cards |
+| Implants page | Sortable table (ID, host, user, OS, last seen, interval), row click → interact |
+| Interact page | Shell terminal (xterm.js), task history, implant info panel, file browser |
+| Tasks page | Global task list — filter by implant, status, type |
+| Listeners page | Start/stop listeners, configure TLS certs, view connection log |
+| WebSocket events | Real-time push: new implant, checkin, task complete |
+| Auth | Login page, JWT tokens, role-based route guards |
+
+#### Phase 3: File Operations + Loot
+
+Full file I/O pipeline between operator and implant.
+
+| Module | What |
+|--------|------|
+| File upload | Operator uploads file → queued as FileUpload task → Badang writes to disk |
+| File download | Operator requests file → FileDownload task → Badang reads and returns |
+| Loot storage | Auto-organize downloaded files by implant ID + timestamp |
+| Credential dump | Trigger CredDump task → store result as loot (LSASS dump, SAM/SYSTEM) |
+| Files page | Browse all uploads/downloads, filter by implant, download from UI |
+
+#### Phase 4: Advanced Tasking
+
+Extended task types matching Badang's full post-ex suite.
+
+| Module | What |
+|--------|------|
+| Lateral movement | Queue LateralMove tasks — psexec, wmi, winrm with params |
+| Exfiltration | Queue Exfil tasks — trigger staged file transfer from implant |
+| SOCKS proxy | Queue SocksConnect — start SOCKS5 proxy on implant, relay through Jebat |
+| Port forwarding | Queue PortForward — set up port relay through implant |
+| Task chaining | Queue multiple tasks as a sequence — execute in order, abort on failure |
+| Sleep management | Bulk sleep change across implants, per-implant override |
+
+#### Phase 5: DNS + SMB Listeners
+
+Alternative channels for restricted environments.
+
+| Module | What |
+|--------|------|
+| DNS listener | TXT record exfil (data in DNS queries), A record tasking (responses encode tasks) |
+| SMB listener | Named pipe listener for internal network pivoting |
+| Channel switching | Implant can switch channels without re-deployment (via SleepChange-like task) |
+| Redirectors | Support for domain fronting (HTTPS) and DNS redirector configs |
+
+#### Phase 6: Operator CLI + Builder
+
+Command-line alternative to web UI + implant configuration generator.
+
+| Module | What |
+|--------|------|
+| Operator CLI | REPL interface: `interact <id>`, `shell <cmd>`, `upload/download`, `listeners` |
+| Implant builder | Generate Badang config: C2 URL, channel, keys, jitter, persistence, loader checks |
+| Profiles | Pre-built configs: stealth (long interval, DNS), noisy (short interval, HTTPS), pivot (SMB) |
+| Export | Generate ready-to-compile Rust config block or TOML for Badang |
+
+### Protocol Contract
+
+Jebat must implement Badang's wire protocol byte-for-byte:
+
+```
+Checkin (0x01):  [16B agent_id][payload: hostname, OS, user, IP as null-terminated strings]
+Task List (0x02): [4B count][for each: [1B task_type][4B data_len][data]]
+Result (0x03):   [16B agent_id][1B task_type][1B success][4B data_len][data]
+```
+
+Transport: RC4 encrypt the entire message body with the shared hex key. HTTPS wraps it in a POST/GET to the configured path. The RC4 key is configured at build time in Badang and at runtime in Jebat's listener config.
+
+### Tech Stack
+
+| Layer | Choice | Reason |
+|-------|--------|--------|
+| Language | Rust | Same ecosystem as Badang, memory safety, async via tokio |
+| HTTP framework | axum | Async, tower middleware, good WebSocket support |
+| TLS | rustls | Pure Rust, no OpenSSL dependency |
+| Database | SQLite (rusqlite) | Zero-config, single file, good enough for ops scale |
+| Frontend | React + TypeScript | Standard, xterm.js for terminal, TanStack Table for grids |
+| Build | Vite (frontend) + cargo (backend) | Fast dev builds, single binary with embedded assets |
 
 ---
 
@@ -286,12 +425,17 @@ The C2 server must implement Badang's binary wire protocol (see `src/comms/proto
 | 1 | Core platform (8 inject, 6 persist, stager, packaging, evasion, syscalls) | Badang | **Done** |
 | 2 | Comms module (beacon loop + HTTPS channel + RC4 transport) | Badang | **Done** |
 | 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | **Done** |
-| 4 | C2 Server (listeners + task queue + web UI) | badang-c2 | Planned |
-| 5 | Post-ex: credentials + lateral movement | Badang | **Done** |
-| 6 | Post-ex: exfiltration + tunneling | Badang | **Done** |
-| 7 | Phishing toolkit + Recon/OSINT | New projects | Future |
+| 4 | Post-ex: credentials + lateral movement | Badang | **Done** |
+| 5 | Post-ex: exfiltration + tunneling | Badang | **Done** |
+| 6 | Core server + HTTPS listener | Jebat | Planned |
+| 7 | Operator web UI | Jebat | Planned |
+| 8 | File operations + loot management | Jebat | Planned |
+| 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Planned |
+| 10 | DNS + SMB listeners | Jebat | Planned |
+| 11 | Operator CLI + implant builder | Jebat | Planned |
+| 12 | Phishing toolkit + Recon/OSINT | New projects | Future |
 
-Phases 2–3 and 4 can overlap — comms module needs a server to talk to, server needs an implant to manage.
+Badang is complete — Jebat is the next project to build.
 
 ---
 
