@@ -193,12 +193,13 @@ GitHub Actions builds both binaries on ubuntu-latest and windows-latest, runs `c
 
 | Doc | Covers |
 |-----|--------|
-| [build.md](docs/build.md) | Architecture, XOR obfuscation, dynamic API resolution, PE metadata, release profile |
+| [**guide.md**](docs/guide.md) | **Start here** — hands-on walkthrough from first build to full evasion chain |
 | [features.md](docs/features.md) | All modules in detail, static analysis evasion layers |
-| [cli.md](docs/cli.md) | CLI usage reference |
-| [gui.md](docs/gui.md) | GUI usage guide |
+| [build.md](docs/build.md) | Architecture, XOR obfuscation, dynamic API resolution, PE metadata, release profile |
+| [killchain.md](docs/killchain.md) | Where each module fits in an operation |
+| [cli.md](docs/cli.md) | CLI flag reference |
+| [gui.md](docs/gui.md) | GUI panel reference |
 | [hooking.md](docs/hooking.md) | How EDR hooking works |
-| [killchain.md](docs/killchain.md) | Badang in the attack kill chain |
 
 ---
 
