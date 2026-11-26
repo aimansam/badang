@@ -40,15 +40,29 @@ cargo test
 | **payload/** | format | `src/payload/format.rs` | Byte format converter + hex dump |
 | | encrypt | `src/payload/encrypt.rs` | Shellcode encryption (XOR/RC4 + PIC stubs) |
 | | generate | `src/payload/generate.rs` | Shellcode generator (PEB walk + template patch) |
-| **injection/** | — | `src/injection/` | Process injection (7 techniques) |
-| **root** | resolve | `src/resolve.rs` | Dynamic API resolution (runtime IAT bypass) |
-| | obf | `src/obf.rs` | XOR-encrypted strings + API names (8-byte key) |
+| **injection/** | — | `src/injection/` | Process injection (8 techniques) |
+| **persistence/** | — | `src/persistence/` | 6 persistence methods (registry, schtask, WMI, hijack, COM, service) |
+| **comms/** | mod | `src/comms/mod.rs` | Beacon loop, channel dispatch, jitter/interval |
+| | protocol | `src/comms/protocol.rs` | Binary wire format, 11 task types, RC4 crypto |
+| | https | `src/comms/https.rs` | HTTPS channel via WinINet (dynamic resolve) |
+| | task | `src/comms/task.rs` | Task executor (shell, file I/O, module dispatch) |
+| **loader/** | mod | `src/loader/mod.rs` | Pre-execution check orchestrator |
+| | sandbox | `src/loader/sandbox.rs` | 5 sandbox checks (timing, process count, disk, user, memory) |
+| | antidebug | `src/loader/antidebug.rs` | 4 debugger checks (flag, port, flags, timing) |
+| | antivm | `src/loader/antivm.rs` | 3 VM checks (CPUID, registry, MAC prefix) |
+| **postex/** | mod | `src/postex/mod.rs` | 9-module post-ex dispatch (creds, lateral, exfil, tunnel) |
+| | creds | `src/postex/creds.rs` | LSASS dump, SAM export, token delegation |
+| | lateral | `src/postex/lateral.rs` | PsExec, WMI exec, WinRM exec |
+| | exfil | `src/postex/exfil.rs` | Staged file exfiltration (64KB chunks, RC4) |
+| | tunnel | `src/postex/tunnel.rs` | SOCKS5 proxy, port forwarding |
+| **root** | resolve | `src/resolve.rs` | Dynamic API resolution (91 wrappers, runtime IAT bypass) |
+| | obf | `src/obf.rs` | XOR-encrypted strings + API names (141 constants, 8-byte key) |
 | | pe | `src/pe.rs` | Shared PE helpers (exports, .text, pattern scan) |
 | | process | `src/process.rs` | Process enumeration (ToolHelp snapshot) |
 | | cli | `src/cli.rs` | Argument parsing |
 | | safety | `src/safety.rs` | Execution mode checks, PID validation |
 | | log | `src/log.rs` | Shared log sink (CLI → stderr, GUI → panel) |
-| | gui/ | `src/gui/` | GUI app, theme, 11 panels |
+| | gui/ | `src/gui/` | GUI app, theme, 16 panels |
 
 ## Windows Defender Exclusions
 
@@ -92,7 +106,7 @@ Set-MpPreference -DisableRealtimeMonitoring $false
 
 ## Dynamic API Resolution (`src/resolve.rs`)
 
-All suspicious Win32 API calls (VirtualAlloc, WriteProcessMemory, CreateRemoteThread, OpenProcess, etc.) are resolved at runtime instead of appearing in the Import Address Table (IAT). This eliminates the primary static detection signal that Defender's ML model uses.
+All suspicious Win32 API calls (VirtualAlloc, WriteProcessMemory, CreateRemoteThread, OpenProcess, etc.) are resolved at runtime instead of appearing in the Import Address Table (IAT). This eliminates the primary static detection signal that Defender's ML model uses. Currently 91 wrappers covering kernel32, ntdll, advapi32, user32, ws2_32, dbghelp, mpr, and iphlpapi.
 
 **How it works:**
 - Only two bootstrap functions remain in the IAT: `GetModuleHandleA` and `GetProcAddress` (every legitimate binary imports these)
@@ -129,8 +143,8 @@ Raw u32 constants replace windows crate newtypes (MEM_COMMIT=0x1000, PAGE_READWR
        f(arg1, arg2)
    }
    ```
-4. For DLLs other than kernel32 (e.g. user32), use `U32` instead of `K32`
-5. For DLLs not loaded by default (e.g. amsi.dll), use `resolve_load()` instead of `resolve()`
+4. For DLLs other than kernel32, use the appropriate handle constant (`U32` for user32, `NTDLL` for ntdll, etc.)
+5. For DLLs not loaded by default (e.g. amsi.dll, dbghelp.dll, mpr.dll, iphlpapi.dll, ws2_32.dll), use `resolve_load()` instead of `resolve()`
 
 **Converting a module to use dynamic resolution:**
 
@@ -187,7 +201,7 @@ The release binary uses compile-time multi-byte XOR obfuscation to prevent stati
 
 **What's encrypted:**
 - API function names (Nt\*, AMSI, ETW targets)
-- DLL names (ntdll.dll, amsi.dll, kernel32.dll, user32.dll, ws2\_32.dll, xpsservices.dll)
+- DLL names (ntdll.dll, amsi.dll, kernel32.dll, user32.dll, ws2\_32.dll, xpsservices.dll, dbghelp.dll, mpr.dll, iphlpapi.dll)
 - Patch byte signatures (AMSI bypass, ETW ret)
 - Syscall patterns (prologue, syscall;ret gadget)
 - Shellcode templates (PEB walking, find\_function, get\_data\_ptr, all main payloads)

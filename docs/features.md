@@ -89,7 +89,7 @@ Builds fake call stack frames before calling Windows APIs. Scans ntdll/kernel32 
 
 All Win32 API calls are resolved at runtime via `GetModuleHandleA` + `GetProcAddress` with XOR-encrypted function names. Only these two bootstrap functions appear in the Import Address Table — Defender's ML model no longer sees VirtualAlloc, WriteProcessMemory, CreateRemoteThread, etc. in the binary's imports.
 
-The `windows` crate was removed entirely. All modules use `crate::resolve::*` (40+ wrappers) for API calls and raw u32 constants for flags/permissions.
+The `windows` crate was removed entirely. All modules use `crate::resolve::*` (91 wrappers across kernel32, ntdll, advapi32, user32, ws2_32, dbghelp, mpr, iphlpapi) for API calls and raw u32 constants for flags/permissions.
 
 **Before:** 98 KERNEL32.dll IAT entries (full injection API set flagged by ML)
 **After:** ~50 entries (standard CRT only, zero injection/evasion APIs)
@@ -106,7 +106,7 @@ All sensitive strings are encrypted at compile time with an 8-byte XOR key (`[0x
 
 ### 2. Dynamic API Resolution (`src/resolve.rs`)
 
-All Win32 API calls go through runtime resolution instead of static imports. Only `GetModuleHandleA` and `GetProcAddress` appear in the IAT. The 20+ modules call `crate::resolve::VirtualAlloc()` etc. which resolve the real function pointer on first call using XOR-encrypted names from `obf.rs`.
+All Win32 API calls go through runtime resolution instead of static imports. Only `GetModuleHandleA` and `GetProcAddress` appear in the IAT. All modules call `crate::resolve::VirtualAlloc()` etc. which resolve the real function pointer on first call using XOR-encrypted names from `obf.rs`. Currently 91 wrappers covering 8 DLLs.
 
 ### 3. String Sanitization (all source files)
 
@@ -158,7 +158,7 @@ Callback loop with encrypted transport for remote task execution. Uses WinINet H
 
 **Wire protocol:** Binary little-endian with 3 message types — check-in (agent→server), task list (server→agent), result (agent→server). RC4 encryption layer with configurable hex key.
 
-**Task types:** Shell (cmd.exe /c with pipe capture), sleep interval change, exit signal, no-op.
+**Task types:** Nop, shell (cmd.exe /c with pipe capture), sleep interval change, exit signal, file upload/download, credential dump, lateral movement, exfiltration, SOCKS connect, port forward (11 types total).
 
 **Features:** Jittered sleep (configurable %), exponential backoff on errors, max retry limit, optional sleep obfuscation (memory encryption during sleep), 16-byte agent ID generation.
 

@@ -70,11 +70,11 @@ Future additions (separate projects):
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
-│  7. ACTIONS  │  [1] Badang — Post-ex modules                         │
+│  7. ACTIONS  │  [1] Badang — Post-ex modules (9 modules)              │
 │              │      Credentials — LSASS dump, SAM/SYSTEM, tokens     │
-│              │      Lateral    — PsExec, WMI, WinRM, PtH             │
-│              │      Exfil      — DNS/HTTPS/cloud, staged, encrypted  │
-│              │      Tunnel     — SOCKS5, port forward                 │
+│              │      Lateral    — PsExec, WMI, WinRM                  │
+│              │      Exfil      — staged TCP, 64KB chunks, RC4        │
+│              │      Tunnel     — SOCKS5 proxy, port forward           │
 │              │                                                       │
 ├──────────────┼───────────────────────────────────────────────────────┤
 │              │                                                       │
