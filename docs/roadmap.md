@@ -10,7 +10,7 @@ Five projects cover the full kill chain, named after the legendary Malay warrior
 |---|---------|-------------|------|--------|
 | 1 | **Badang** | Hang Badang — the strongman | **Dual role:** attacker-side (generate, encrypt, convert, package) + target-side implant (loader, evasion, inject, persist, comms, post-ex) | All phases complete |
 | 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | All phases complete |
-| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — QEMU VM orchestration, deploy + detonate Badang builds, verify Jebat checkin, Defender evasion scoring | Planned |
+| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — QEMU VM orchestration, deploy + detonate Badang builds, verify Jebat checkin, Defender evasion scoring | Complete |
 | 4 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
 | 5 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
 
@@ -737,7 +737,7 @@ lekir/
 | 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
-| 12 | VM orchestration + deploy + Jebat checkin verify + Defender check + report | Tuah | Attacker (Linux) | Planned |
+| 12 | VM orchestration + deploy + Jebat checkin verify + Defender check + report | Tuah | Attacker (Linux) | **Done** |
 | 13 | Campaign engine + SMTP + templates | Kasturi | Attacker (Linux/macOS/Win) | Planned |
 | 14 | Payload packager + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
 | 15 | Tracking + results dashboard | Kasturi | Attacker (Linux/macOS/Win) | Planned |
@@ -745,7 +745,7 @@ lekir/
 | 17 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
 | 18 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
 
-Badang and Jebat are complete. Build order: Tuah → Kasturi → Lekir.
+Badang, Jebat, and Tuah are complete. Build order next: Kasturi → Lekir.
 
 ---
 
