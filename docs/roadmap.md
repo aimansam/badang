@@ -10,7 +10,7 @@ Five projects cover the full kill chain, named after the legendary Malay warrior
 |---|---------|-------------|------|--------|
 | 1 | **Badang** | Hang Badang — the strongman | **Dual role:** attacker-side (generate, encrypt, convert, package) + target-side implant (loader, evasion, inject, persist, comms, post-ex) | All phases complete |
 | 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | All phases complete |
-| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — QEMU VM orchestration, deploy + detonate Badang builds, verify Jebat checkin, Defender evasion scoring | Complete |
+| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — Docker + Wine + ClamAV + YARA, execute Badang builds, verify Jebat checkin, AV evasion scoring | Complete |
 | 4 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
 | 5 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
 
@@ -445,84 +445,84 @@ Transport: RC4 encrypt the entire message body with the shared hex key. HTTPS wr
 
 ## Tuah — Binary Testing Sandbox
 
-Separate repository (`tuah/`). Lightweight detonation sandbox — automates testing Badang binaries against a Windows VM before engagement. Named after Hang Tuah — the greatest warrior, the one who proves the others are ready.
+Separate repository (`tuah/`). Docker-based detonation sandbox — runs Badang binaries under Wine in disposable containers, scans with ClamAV + YARA, and verifies Jebat C2 checkin. Named after Hang Tuah — the greatest warrior, the one who proves the others are ready.
 
-**Runs on:** Attacker machine (Linux)
+**Runs on:** Any machine with Docker (Linux, macOS, Windows/WSL)
 
 ### Architecture
 
 ```
 tuah/
 ├── src/
-│   ├── main.rs            CLI entry (clap subcommands)
-│   ├── config.rs          TOML config structs
-│   ├── vm.rs              QEMU lifecycle (start, stop, snapshot revert, wait SSH)
-│   ├── ssh.rs             SSH/SCP command wrappers (shells out to ssh/scp)
-│   ├── deploy.rs          File transfer + binary execution on VM
-│   ├── jebat.rs           Jebat API client (login, list implants, queue task, poll)
-│   ├── defender.rs        Defender status via SSH + PowerShell
-│   └── report.rs          Test result formatting (pass/fail per check)
+│   ├── main.rs         CLI entry (clap subcommands)
+│   ├── config.rs       TOML config structs
+│   ├── sandbox.rs      Docker container lifecycle (scan, run, stop, check)
+│   ├── scanner.rs      ClamAV + YARA scan result types
+│   ├── jebat.rs        Jebat API client (login, implants, tasks)
+│   └── report.rs       Test result formatting (pass/fail per step)
+├── sandbox/
+│   ├── Dockerfile      Wine + ClamAV + YARA image (Debian)
+│   └── entrypoint.sh   Scan/run/check dispatcher
+├── rules/
+│   └── badang.yar      YARA detection rules
 ├── config/
-│   └── tuah.toml          VM image path, SSH creds, Jebat server, test params
+│   └── tuah.toml       Sandbox image, network, Jebat server, test params
+├── test.sh             One-command chain test (builds sandbox, starts Jebat, runs test)
 ├── Cargo.toml
-├── .gitignore
-└── README.md
+├── Dockerfile          Tuah tool container
+├── docker-compose.yml
+└── .gitignore
 ```
 
 ### Test Flow
 
 ```
 tuah test <binary>
-  1. Revert VM to clean snapshot         (qemu-img snapshot -a)
-  2. Boot VM                             (qemu-system-x86_64)
-  3. Wait for SSH ready                  (TCP connect poll)
-  4. Copy binary to VM                   (scp)
-  5. Record pre-execution implant list   (GET /api/implants on Jebat)
-  6. Execute binary on VM                (ssh)
-  7. Poll Jebat for new implant checkin  (GET /api/implants, diff)
-  8. Check Defender detection status      (PowerShell Get-MpThreatDetection)
-  9. Queue shell task + verify result    (POST /api/tasks, poll completion)
-  10. Print test report
-  11. Shutdown VM
+  1. Check sandbox Docker image exists
+  2. Scan binary with ClamAV + YARA
+  3. Connect to Jebat, record implant list
+  4. Run binary in Docker container (Wine)
+  5. Poll Jebat for new implant checkin
+  6. Queue shell task + verify result
+  7. Print test report
+  8. Remove container
 ```
+
+Fresh container per test — no snapshots, no boot wait, seconds to spin up.
 
 ### Core Components
 
 | Component | What |
 |-----------|------|
-| **VM Manager** | QEMU orchestration — snapshot revert, boot with SSH port forward, clean shutdown. No heavy VM libraries, shells out to `qemu-system-x86_64` and `qemu-img`. |
-| **Deployer** | SCP binary into VM, SSH execute with fire-and-forget (Badang runs in background). |
+| **Sandbox** | Docker container management — spin up fresh container per test, mount binary read-only, host networking so Wine-executed implant can reach Jebat, cleanup via `docker rm`. |
+| **Scanner** | ClamAV signature scan + YARA custom rules inside the container. Returns JSON: detected/clean per engine, matched rule names. Custom rules in `rules/`. |
 | **Jebat Client** | Same REST API pattern as `jebat-cli` — JWT login, list implants, queue task, poll task result. Detects new checkin by diffing implant list before/after execution. |
-| **Defender Checker** | PowerShell over SSH — `Get-MpThreatDetection` for detections, `Get-MpComputerStatus` for real-time protection status. Reports threat name and action if detected. |
-| **Reporter** | Structured test report: pass/fail per step, timing, agent ID, Defender status. |
+| **Reporter** | Structured test report: pass/fail per step, timing, agent ID, AV scan results. |
 
 ### CLI Commands
 
 ```
-tuah test <binary>     Full test cycle (revert → boot → deploy → verify → report → shutdown)
-tuah vm start          Boot VM from clean snapshot
-tuah vm stop           Shutdown VM
-tuah vm revert         Revert to clean snapshot
-tuah vm ssh            Open interactive SSH session to VM
-tuah status            Check VM and Jebat connectivity
+tuah test <binary>     Full chain test (scan → execute → checkin → task → report)
+tuah scan <binary>     Scan binary with ClamAV + YARA (no execution)
+tuah build             Build the sandbox Docker image
+tuah status            Check Docker, sandbox image, and Jebat connectivity
 ```
 
 ### Prerequisites
 
-- QEMU installed (`qemu-system-x86_64`, `qemu-img`)
-- Windows QCOW2 image with OpenSSH server enabled
-- Clean snapshot saved (`qemu-img snapshot -c clean windows.qcow2`)
-- `sshpass` (optional, for password-based SSH; key-based recommended)
+- Docker installed
 - Jebat C2 server running and accessible
+- Badang binary cross-compiled for Windows
 
 ### Tech Stack
 
 | Layer | Choice | Reason |
 |-------|--------|--------|
 | Language | Rust | Consistent with ecosystem |
-| HTTP | reqwest | Jebat API client, same as jebat-cli |
+| HTTP | reqwest | Jebat API client |
 | CLI | clap | Same as all other tools |
-| VM | QEMU (shell out) | Lightweight, no library deps, snapshot support |
+| Sandbox | Docker + Wine | Portable, no KVM/QEMU required, seconds to spin up |
+| AV | ClamAV + YARA | Signature + custom rule scanning, tunable detection |
 | SSH | ssh/scp (shell out) | Simple, leverages existing SSH config |
 
 ---
@@ -839,7 +839,7 @@ lekir/
 | 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
-| 12 | VM orchestration + deploy + Jebat checkin verify + Defender check + report | Tuah | Attacker (Linux) | **Done** |
+| 12 | Docker sandbox + Wine exec + ClamAV/YARA scan + Jebat checkin verify + report | Tuah | Attacker (any with Docker) | **Done** |
 | 13 | Core server + SMTP sender + campaign engine + email templates | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 14 | Payload packager (HTA, LNK, VBS, macro) + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 15 | Tracking (pixel, click, download) + results + React web UI | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
