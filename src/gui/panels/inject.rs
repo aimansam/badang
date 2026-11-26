@@ -13,6 +13,7 @@ const TECHNIQUES: &[(&str, &str)] = &[
     ("section", "Section Map"),
     ("callback", "Callback"),
     ("stomp", "Module Overwrite"),
+    ("hollowing", "Process Hollowing"),
 ];
 
 #[derive(Default)]

