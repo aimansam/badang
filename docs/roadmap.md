@@ -638,12 +638,12 @@ Wrap Badang stagers in delivery formats, clone login pages for credential harves
 
 | Module | What | Status |
 |--------|------|--------|
-| HTA wrapper | mshta.exe auto-runs embedded VBScript, downloads + executes stager | Planned |
-| LNK generator | Windows shortcut with hidden PowerShell download cradle | Planned |
-| VBS dropper | WScript.Shell.Run downloads and executes stager | Planned |
-| Macro generator | Auto_Open VBA code for .docm with Shell download cradle | Planned |
-| Page cloner | reqwest + scraper: fetch page + assets, rewrite links, serve via Kasturi | Planned |
-| Credential capture | Form interception on cloned pages, log to DB per campaign + target | Planned |
+| HTA wrapper | mshta.exe auto-runs embedded VBScript, downloads + executes stager | **Done** |
+| LNK generator | Windows shortcut with hidden PowerShell download cradle | **Done** |
+| VBS dropper | WScript.Shell.Run downloads and executes stager | **Done** |
+| Macro generator | Auto_Open VBA code for .docm with Shell download cradle | **Done** |
+| Page cloner | reqwest + scraper: fetch page + assets, rewrite links, serve via Kasturi | **Done** |
+| Credential capture | Form interception on cloned pages, log to DB per campaign + target | **Done** |
 
 **DB tables:** `payloads` (id, campaign_id, payload_type, stager_path, filename, data), `cloned_pages` (id, campaign_id, source_url, serve_path), `captured_creds` (id, page_id, campaign_id, target_id, username, password, ip_address, user_agent)
 
@@ -655,13 +655,13 @@ Real-time campaign tracking and operator dashboard.
 
 | Module | What | Status |
 |--------|------|--------|
-| Open tracking | 1x1 PNG pixel with unique token per target — `GET /t/:token` | Planned |
-| Click tracking | Redirect through Kasturi with logging — `GET /r/:token` | Planned |
-| Download tracking | Payload served with event logging — `GET /d/:token` | Planned |
-| Results API | Per-campaign stats (sent/opened/clicked/downloaded), timeline, event feed | Planned |
-| WebSocket events | Real-time push: email sent, opened, clicked, downloaded (tokio broadcast) | Planned |
-| React web UI | Dashboard, Campaigns, Templates, Payloads, Cloner, Results, Domains pages | Planned |
-| JWT auth | Login page, token-based access (same pattern as Jebat) | Planned |
+| Open tracking | 1x1 PNG pixel with unique token per target — `GET /t/:token` | **Done** |
+| Click tracking | Redirect through Kasturi with logging — `GET /r/:token` | **Done** |
+| Download tracking | Payload served with event logging — `GET /d/:token` | **Done** |
+| Results API | Per-campaign stats (sent/opened/clicked/downloaded), timeline, event feed | **Done** |
+| WebSocket events | Real-time push: email sent, opened, clicked, downloaded (tokio broadcast) | **Done** |
+| React web UI | Dashboard, Campaigns, Templates, Payloads, Cloner, Results, Domains pages | **Done** |
+| JWT auth | Login page, token-based access (same pattern as Jebat) | **Done** |
 
 **Tracking token:** Base64-encoded `{campaign_id}:{target_id}:{random}` — unique per email per target. Embedded in template as `{{tracking_url}}` (pixel), link wrapper (redirect), `{{payload_url}}` (download).
 
@@ -671,12 +671,12 @@ Advanced delivery formats for email gateway bypass and sending infrastructure ma
 
 | Module | What | Status |
 |--------|------|--------|
-| ISO container | LNK + hidden payload inside .iso — Windows auto-mounts on double-click | Planned |
-| HTML smuggling | JavaScript blob construction, auto-download trigger, bypasses email filters | Planned |
-| OneNote embed | .one file with embedded payload behind "click to view" overlay | Planned |
-| Domain management | Add/remove sending domains, per-domain SMTP credentials | Planned |
-| DNS health checker | SPF (TXT), DKIM (TXT), DMARC (TXT) validation per domain | Planned |
-| Domain rotation | Campaign engine cycles through verified domains to avoid blocklisting | Planned |
+| ISO container | LNK + hidden payload inside .iso — Windows auto-mounts on double-click | **Done** |
+| HTML smuggling | JavaScript blob construction, auto-download trigger, bypasses email filters | **Done** |
+| OneNote embed | .one file with embedded payload behind "click to view" overlay | **Done** |
+| Domain management | Add/remove sending domains, per-domain SMTP credentials | **Done** |
+| DNS health checker | SPF (TXT), DKIM (TXT), DMARC (TXT) validation per domain | **Done** |
+| Domain rotation | Campaign engine cycles through verified domains to avoid blocklisting | **Done** |
 
 **DB table:** `domains` (id, domain, smtp_host, smtp_port, smtp_user, smtp_pass, spf_valid, dkim_valid, dmarc_valid, last_checked)
 
@@ -841,14 +841,14 @@ lekir/
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 12 | VM orchestration + deploy + Jebat checkin verify + Defender check + report | Tuah | Attacker (Linux) | **Done** |
 | 13 | Core server + SMTP sender + campaign engine + email templates | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
-| 14 | Payload packager (HTA, LNK, VBS, macro) + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
-| 15 | Tracking (pixel, click, download) + results + React web UI | Kasturi | Attacker (Linux/macOS/Win) | Planned |
-| 16 | Extended payloads (ISO, HTML smuggling, OneNote) + domain management | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 14 | Payload packager (HTA, LNK, VBS, macro) + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
+| 15 | Tracking (pixel, click, download) + results + React web UI | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
+| 16 | Extended payloads (ISO, HTML smuggling, OneNote) + domain management | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 17 | Subdomain enum + DNS + email harvest | Lekir | Attacker (Linux/macOS/Win) | Planned |
 | 18 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
 | 19 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
 
-Badang, Jebat, and Tuah are complete. Build order next: Kasturi → Lekir.
+Badang, Jebat, Tuah, and Kasturi are complete. Build order next: Lekir.
 
 ---
 
