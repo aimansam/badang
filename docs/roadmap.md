@@ -537,24 +537,68 @@ Separate repository (`kasturi/`). Delivery platform — crafts and sends the lur
 
 ```
 kasturi/
-├── server/                  Rust backend
-│   ├── campaigns/           Campaign management (create, schedule, track, report)
-│   ├── templates/           Email template engine (HTML + plaintext, variable substitution)
-│   ├── payloads/            Payload packaging (macro, HTA, LNK, ISO, VBS, OneNote)
-│   ├── cloner/              Landing page cloner (fetch, rewrite links, host)
-│   ├── tracking/            Open tracking (pixel), click tracking (redirect), download tracking
-│   ├── smtp/                SMTP sender (direct, relay, provider API), DKIM signing
-│   ├── api/                 REST API for web UI
-│   └── main.rs              Server entrypoint
-├── web/                     Operator dashboard
-│   ├── Campaigns.tsx        Campaign builder — target list, template, payload, schedule
-│   ├── Templates.tsx        Email template editor (live preview, variable list)
-│   ├── Payloads.tsx         Payload builder — select type, embed Badang stager, preview
-│   ├── Cloner.tsx           URL input → cloned page preview → host config
-│   ├── Results.tsx          Campaign results — opened, clicked, downloaded, by target
-│   └── Domains.tsx          Sending domain management, DNS record checker
-└── config/
-    └── kasturi.toml         SMTP config, tracking domain, TLS certs
+├── server/                      Rust backend (axum)
+│   └── src/
+│       ├── main.rs              Server entry + config loading
+│       ├── config.rs            TOML config structs
+│       ├── state.rs             Shared app state (db, event bus)
+│       ├── storage/db.rs        SQLite schema + queries
+│       ├── campaigns/
+│       │   ├── engine.rs        Campaign lifecycle (create, schedule, execute, pause)
+│       │   └── targets.rs       Target list (CSV import, manual add, dedup)
+│       ├── templates/
+│       │   ├── engine.rs        Tera rendering with variable substitution
+│       │   └── presets.rs       Built-in template library
+│       ├── smtp/sender.rs       lettre SMTP (direct, relay, provider API)
+│       ├── payloads/
+│       │   ├── hta.rs           HTA wrapper (mshta.exe, embedded VBScript)
+│       │   ├── lnk.rs           LNK shortcut (PowerShell download cradle)
+│       │   ├── vbs.rs           VBS dropper (WScript.Shell.Run)
+│       │   ├── macro_gen.rs     VBA macro source for Office docs
+│       │   ├── iso.rs           ISO container (LNK + hidden payload)
+│       │   ├── smuggle.rs       HTML smuggling (JS blob, auto-download)
+│       │   └── onenote.rs       OneNote .one with embedded payload
+│       ├── cloner/engine.rs     Page fetch + rewrite + serve + cred capture
+│       ├── tracking/
+│       │   ├── pixel.rs         1x1 PNG open tracking per target
+│       │   ├── redirect.rs      Click tracking via redirect
+│       │   └── download.rs      Payload download tracking
+│       ├── domains/health.rs    SPF/DKIM/DMARC DNS validation
+│       ├── core/events.rs       Event bus (tokio broadcast)
+│       └── api/
+│           ├── mod.rs           Router assembly
+│           ├── auth.rs          JWT auth
+│           ├── campaigns.rs     Campaign CRUD + send trigger
+│           ├── templates.rs     Template CRUD + preview
+│           ├── targets.rs       Target list management
+│           ├── payloads.rs      Payload generation
+│           ├── cloner.rs        Clone + credential capture
+│           ├── results.rs       Campaign results + stats
+│           ├── domains.rs       Domain management
+│           └── ws.rs            WebSocket events
+├── web/                         Operator dashboard (React + TypeScript)
+│   └── src/
+│       ├── App.tsx              Layout + routing + dark theme
+│       ├── pages/
+│       │   ├── Login.tsx        Terminal-style login
+│       │   ├── Dashboard.tsx    Campaign stats overview
+│       │   ├── Campaigns.tsx    Campaign list + create wizard
+│       │   ├── Templates.tsx    Template editor + preview
+│       │   ├── Payloads.tsx     Payload generator UI
+│       │   ├── Cloner.tsx       URL clone → preview → host
+│       │   ├── Results.tsx      Per-campaign results (table + charts)
+│       │   └── Domains.tsx      Sending domain management
+│       ├── components/EventFeed.tsx
+│       └── lib/                 API client, auth, WebSocket
+├── config/
+│   ├── kasturi.toml             Server + SMTP config
+│   └── templates/               Pre-built email templates
+│       ├── invoice.html
+│       ├── it_alert.html
+│       ├── delivery.html
+│       └── meeting.html
+├── Cargo.toml                   Workspace root
+└── .gitignore
 ```
 
 ### Core Components
@@ -563,21 +607,78 @@ kasturi/
 |-----------|------|
 | **Campaign Engine** | Create campaigns: target list (CSV/manual), template, payload attachment, schedule (immediate/delayed/drip). Track per-target status: sent, opened, clicked, downloaded. |
 | **Template Engine** | HTML email templates with variable substitution (`{{first_name}}`, `{{company}}`, `{{tracking_url}}`). Plaintext fallback. Import/export. Library of presets (invoice, delivery, IT alert, meeting). |
-| **Payload Packager** | Wrap Badang stager in delivery formats: Office macro (.docm/.xlsm), HTA, LNK, ISO/IMG, VBS, OneNote (.one), HTML smuggling. Each format embeds the encrypted payload with auto-execute or one-click trigger. |
+| **Payload Packager** | Wrap Badang stager in delivery formats: HTA, LNK, VBS, Office macro, ISO/IMG, OneNote, HTML smuggling. Each format embeds the encrypted payload with auto-execute or one-click trigger. |
 | **Landing Page Cloner** | Input a URL → fetch page + assets → rewrite links to point at Kasturi → host as a credential capture page. Captured creds logged per campaign. |
 | **Tracking** | Invisible 1x1 tracking pixel (email open), redirect link (click tracking), download beacon (payload execution). All events tied to campaign + target. |
 | **SMTP** | Direct send, relay via provider (SendGrid, Mailgun, AWS SES), or custom SMTP. DKIM signing, SPF-aware sending domain rotation. |
 
 ### Build Phases
 
-| Phase | What |
-|-------|------|
-| 1 | Campaign engine + SMTP sender + email templates |
-| 2 | Payload packager (macro, HTA, LNK) |
-| 3 | Landing page cloner + credential capture |
-| 4 | Tracking (open, click, download) + results dashboard |
-| 5 | Extended payloads (ISO, HTML smuggling, OneNote) |
-| 6 | Domain management + DNS health checker |
+#### Phase 1: Core Server + SMTP + Campaign Engine + Templates
+
+Minimum viable phishing platform — create a campaign, write templates, import targets, send emails.
+
+| Module | What | Status |
+|--------|------|--------|
+| Server bootstrap | axum + SQLite + config + JWT auth (same pattern as Jebat) | Planned |
+| Campaign engine | Create, schedule (immediate/delayed/drip), execute, pause campaigns | Planned |
+| Target management | CSV import, manual add, dedup, per-target status tracking | Planned |
+| Template engine | Tera-based HTML + plaintext rendering, variable substitution | Planned |
+| Template presets | 4 built-in templates: invoice, IT alert, delivery, meeting invite | Planned |
+| SMTP sender | lettre crate — direct send, relay, provider API (SendGrid/SES) | Planned |
+| REST API | Campaign/template/target CRUD, send trigger, preview endpoint | Planned |
+
+**DB tables:** `campaigns` (id, name, template_id, status, send_mode, schedule), `targets` (id, campaign_id, email, first_name, last_name, company, position, status), `templates` (id, name, subject, body_html, body_text, sender_name, sender_email), `events` (id, event_type, campaign_id, target_id, detail)
+
+**Template variables:** `{{first_name}}`, `{{last_name}}`, `{{email}}`, `{{company}}`, `{{position}}`, `{{tracking_url}}`, `{{payload_url}}`, `{{date}}`
+
+#### Phase 2: Payload Packager + Landing Page Cloner
+
+Wrap Badang stagers in delivery formats, clone login pages for credential harvesting.
+
+| Module | What | Status |
+|--------|------|--------|
+| HTA wrapper | mshta.exe auto-runs embedded VBScript, downloads + executes stager | Planned |
+| LNK generator | Windows shortcut with hidden PowerShell download cradle | Planned |
+| VBS dropper | WScript.Shell.Run downloads and executes stager | Planned |
+| Macro generator | Auto_Open VBA code for .docm with Shell download cradle | Planned |
+| Page cloner | reqwest + scraper: fetch page + assets, rewrite links, serve via Kasturi | Planned |
+| Credential capture | Form interception on cloned pages, log to DB per campaign + target | Planned |
+
+**DB tables:** `payloads` (id, campaign_id, payload_type, stager_path, filename, data), `cloned_pages` (id, campaign_id, source_url, serve_path), `captured_creds` (id, page_id, campaign_id, target_id, username, password, ip_address, user_agent)
+
+**Public endpoints:** `GET /c/:path` (serve cloned page), `POST /c/:path` (capture form submission)
+
+#### Phase 3: Tracking + Results + Web UI
+
+Real-time campaign tracking and operator dashboard.
+
+| Module | What | Status |
+|--------|------|--------|
+| Open tracking | 1x1 PNG pixel with unique token per target — `GET /t/:token` | Planned |
+| Click tracking | Redirect through Kasturi with logging — `GET /r/:token` | Planned |
+| Download tracking | Payload served with event logging — `GET /d/:token` | Planned |
+| Results API | Per-campaign stats (sent/opened/clicked/downloaded), timeline, event feed | Planned |
+| WebSocket events | Real-time push: email sent, opened, clicked, downloaded (tokio broadcast) | Planned |
+| React web UI | Dashboard, Campaigns, Templates, Payloads, Cloner, Results, Domains pages | Planned |
+| JWT auth | Login page, token-based access (same pattern as Jebat) | Planned |
+
+**Tracking token:** Base64-encoded `{campaign_id}:{target_id}:{random}` — unique per email per target. Embedded in template as `{{tracking_url}}` (pixel), link wrapper (redirect), `{{payload_url}}` (download).
+
+#### Phase 4: Extended Payloads + Domain Management
+
+Advanced delivery formats for email gateway bypass and sending infrastructure management.
+
+| Module | What | Status |
+|--------|------|--------|
+| ISO container | LNK + hidden payload inside .iso — Windows auto-mounts on double-click | Planned |
+| HTML smuggling | JavaScript blob construction, auto-download trigger, bypasses email filters | Planned |
+| OneNote embed | .one file with embedded payload behind "click to view" overlay | Planned |
+| Domain management | Add/remove sending domains, per-domain SMTP credentials | Planned |
+| DNS health checker | SPF (TXT), DKIM (TXT), DMARC (TXT) validation per domain | Planned |
+| Domain rotation | Campaign engine cycles through verified domains to avoid blocklisting | Planned |
+
+**DB table:** `domains` (id, domain, smtp_host, smtp_port, smtp_user, smtp_pass, spf_valid, dkim_valid, dmarc_valid, last_checked)
 
 ### Tech Stack
 
@@ -589,6 +690,7 @@ kasturi/
 | Template | tera | Jinja2-style templating, good for email HTML |
 | Frontend | React + TypeScript | Same as Jebat |
 | Clone engine | reqwest + scraper | Fetch + parse + rewrite HTML |
+| DNS | hickory-dns | Async DNS resolver for SPF/DKIM/DMARC checks |
 
 ---
 
@@ -738,12 +840,13 @@ lekir/
 | 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 12 | VM orchestration + deploy + Jebat checkin verify + Defender check + report | Tuah | Attacker (Linux) | **Done** |
-| 13 | Campaign engine + SMTP + templates | Kasturi | Attacker (Linux/macOS/Win) | Planned |
-| 14 | Payload packager + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
-| 15 | Tracking + results dashboard | Kasturi | Attacker (Linux/macOS/Win) | Planned |
-| 16 | Subdomain enum + DNS + email harvest | Lekir | Attacker (Linux/macOS/Win) | Planned |
-| 17 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
-| 18 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
+| 13 | Core server + SMTP sender + campaign engine + email templates | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 14 | Payload packager (HTA, LNK, VBS, macro) + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 15 | Tracking (pixel, click, download) + results + React web UI | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 16 | Extended payloads (ISO, HTML smuggling, OneNote) + domain management | Kasturi | Attacker (Linux/macOS/Win) | Planned |
+| 17 | Subdomain enum + DNS + email harvest | Lekir | Attacker (Linux/macOS/Win) | Planned |
+| 18 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
+| 19 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
 
 Badang, Jebat, and Tuah are complete. Build order next: Kasturi → Lekir.
 
