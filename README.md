@@ -1,6 +1,6 @@
 # Badang
 
-**Windows EDR evasion research toolkit** — 7 injection techniques, indirect syscalls, telemetry blinding, memory encryption, and full Defender static analysis bypass. Built in Rust with both CLI and native GUI.
+**Windows EDR evasion research toolkit** — 8 injection techniques, 6 persistence methods, stager payload, output packaging, indirect syscalls, telemetry blinding, memory encryption, and full Defender static analysis bypass. Built in Rust with both CLI and native GUI.
 
 [![Rust](https://img.shields.io/badge/Rust-1.98+-orange?logo=rust)](https://www.rust-lang.org/)
 [![Windows](https://img.shields.io/badge/Windows-x86_64-blue?logo=windows)](https://windows.microsoft.com/)
@@ -21,7 +21,7 @@
 
 | Category | Module | What it does |
 |----------|--------|-------------|
-| **Injection** | 7 techniques | CRT, APC, Thread Hijack, Early Bird, Section Mapping, Callback, Module Stomping |
+| **Injection** | 8 techniques | CRT, APC, Thread Hijack, Early Bird, Section Mapping, Callback, Module Stomping, Process Hollowing |
 | **Syscalls** | Direct | Raw `syscall` invocation with SSN tables (Win 7 SP1, 10 1809, 10 22H2, 11 22H2) |
 | | Indirect | Hell's Gate / Halo's Gate — resolve SSNs at runtime from ntdll PE, execute from ntdll's gadget |
 | **Evasion** | ETW Patch | Patch `EtwEventWrite` / `NtTraceEvent` to blind EDR telemetry |
@@ -31,9 +31,11 @@
 | | Stack Spoofing | Build fake call stack frames so EDR stack-walking sees ntdll/kernel32 |
 | **Analysis** | Hook Detection | Scan target process for modified NT API prologues (JMP, PUSH/RET, INT3) |
 | | API Restoration | Restore hooked functions to original bytes (Direct Byte, Trampoline, Inline) |
-| **Payload** | Generator | Built-in x86_64 shellcode — exec, messagebox, reverse_tcp, bind_tcp (PEB walk + ROR13 hash) |
+| **Payload** | Generator | Built-in x86_64 shellcode — exec, messagebox, reverse_tcp, bind_tcp, stager (PEB walk + ROR13 hash) |
 | | Encryption | XOR (single/multi-byte) and RC4 with PIC decryption stubs |
+| | Packaging | Wrap shellcode in source templates — Rust EXE, PowerShell, C#, Rust DLL |
 | | Converter | Auto-detect and convert between hex, C array, Python bytes, Rust array, decimal |
+| **Persistence** | 6 methods | Registry Run, Scheduled Task, WMI Subscription, DLL Placement, COM Registration, Service Creation |
 | **Safety** | Controls | Dry-run by default, `--execute --confirm` for live ops, system process protection |
 
 ---
@@ -111,6 +113,7 @@ Launch `badang.exe` for the native desktop interface with tabbed panels for ever
 | 5 | **Section Map** | `WriteProcessMemory` never called — shared memory section via `MapViewOfFileNuma2` | Yes |
 | 6 | **Callback** | No thread creation APIs — shellcode fires as `EnumWindows` callback | No |
 | 7 | **Module Stomp** | Shellcode overwrites `.text` of a signed DLL (`xpsservices.dll`) — appears legitimate to memory scanners | No |
+| 8 | **Process Hollow** | Create suspended process, unmap original image, write PE headers/sections, update entry point, resume | No |
 
 ---
 
@@ -139,7 +142,7 @@ Full table with all 13 APIs and 4 Windows versions in [docs/features.md](docs/fe
 |---------|-------------|---------|
 | `analyze` | Detect modified APIs in a target process | Yes |
 | `syscall` | Direct/indirect syscall invocation | No |
-| `inject` | Process injection (7 techniques) | Depends |
+| `inject` | Process injection (8 techniques) | Depends |
 | `unhook` | API restoration (3 methods) | No |
 | `etw` | Patch ETW functions | No |
 | `amsi` | Patch AMSI functions | No |
@@ -147,7 +150,8 @@ Full table with all 13 APIs and 4 Windows versions in [docs/features.md](docs/fe
 | `ppid` | Spawn process with spoofed parent PID | No |
 | `sleep` | Sleep obfuscation demo | No |
 | `spoof` | Stack spoofing demo | No |
-| `generate` | Generate shellcode (exec/msgbox/reverse/bind) | No |
+| `generate` | Generate shellcode (exec/msgbox/reverse/bind/stager) + package | No |
+| `persist` | Persistence configuration (6 methods) | No |
 | `convert` | Convert between payload formats | No |
 | `load` | Load and verify a payload file | No |
 | `scan` | List running processes | No |
@@ -167,18 +171,19 @@ Full table with all 13 APIs and 4 Windows versions in [docs/features.md](docs/fe
 
 ```
 src/
-├── injection/        7 techniques (crt, apc, hijack, earlybird, section, callback, stomp)
+├── injection/        8 techniques (crt, apc, hijack, earlybird, section, callback, stomp, hollow)
 ├── evasion/          ETW, AMSI, PPID spoofing, sleep obfuscation, stack spoofing
 ├── syscall/          Direct invocation + Hell's Gate / Halo's Gate
 ├── analysis/         Hook detection + API restoration
-├── payload/          Generator, encryption, format converter
-├── gui/              Native desktop app (egui) — 11 panels + dark theme
+├── payload/          Generator, encryption, format converter, output packaging
+├── persistence/      6 techniques (registry, schtask, wmi, hijack, com, service)
+├── gui/              Native desktop app (egui) — 13 panels + dark theme
 ├── obf.rs            XOR-encrypted strings (8-byte key, compile-time)
 ├── resolve.rs        Dynamic API resolution (runtime IAT bypass)
 ├── pe.rs             Shared PE helpers (exports, .text, pattern scan)
 ├── safety.rs         Execution mode checks, PID validation
 ├── process.rs        Process enumeration (ToolHelp snapshot)
-└── tests.rs          113 integration tests
+└── tests.rs          133 integration tests
 ```
 
 ---

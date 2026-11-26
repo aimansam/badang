@@ -8,7 +8,7 @@ Five products cover the entire kill chain. Post-exploitation capabilities (crede
 
 | # | Product | Kill Chain Stages | Status |
 |---|---------|-------------------|--------|
-| 1 | **Badang** | Weaponize + Exploit + Install + Evasion | In progress — needs persistence, stager gen, output formats, process hollowing |
+| 1 | **Badang** | Weaponize + Exploit + Install + Evasion | **Complete** — 8 injection techniques, 6 persistence methods, stager payload, output packaging |
 | 2 | **Loader/Stager** | Delivery + Exploit | Next |
 | 3 | **C2 Framework** | C2 + Actions (creds, lateral, persist, exfil, tunnel as modules) | Planned |
 | 4 | **Phishing Toolkit** | Delivery | Planned |
@@ -113,9 +113,9 @@ Five products cover the entire kill chain. Post-exploitation capabilities (crede
 
 ---
 
-## Badang Modifications Required
+## Badang Modifications (Completed)
 
-Badang is the evasion foundation for the entire toolchain. Four additions complete its kill chain coverage:
+All four additions are now implemented and shipped:
 
 ### 1. Persistence Module (new: `src/persistence/`)
 
@@ -180,16 +180,16 @@ Useful for the stager — creates a clean, legitimate-looking process to live in
 
 ## Build Order
 
-### Phase 1: Expand Badang (current)
+### Phase 1: Expand Badang (DONE)
 
-Complete the 4 modifications above. This makes Badang the full weaponize + exploit + install platform.
+All four modifications shipped. Badang is the full weaponize + exploit + install platform.
 
-| Task | Effort | Priority |
-|------|--------|----------|
-| Persistence module | Medium | High — completes install stage |
-| Stager payload type | Small | High — bridges to C2 |
-| Process hollowing | Small | Medium — one more technique |
-| Output formats | Medium | Medium — bridges to phishing delivery |
+| Task | Status |
+|------|--------|
+| Persistence module (6 techniques) | Done |
+| Stager payload type (WinINet download + XOR decrypt) | Done |
+| Process hollowing (8th injection technique) | Done |
+| Output formats (Exe, Ps1, CSharp, Dll packaging) | Done |
 
 ### Phase 2: Loader/Stager (product #2)
 

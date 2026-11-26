@@ -17,7 +17,7 @@ Enter a PID. Click **"Switch to Live"** to leave dry-run mode. Click **Analyze**
 Select an NT function from the dropdown. Toggle "Indirect syscall" checkbox for Hell's Gate / Halo's Gate resolution. Shows syscall number info (dry run) or invokes directly (live).
 
 ### Inject
-Select technique from dropdown (CreateRemoteThread / APC / Thread Hijack / Early Bird APC / Section Mapping / Callback Execution / Module Stomping), load payload. Enter PID for most techniques; Early Bird, Callback, and Stomp execute locally so PID is not required. Requires live mode + Confirm.
+Select technique from dropdown (CreateRemoteThread / APC / Thread Hijack / Early Bird APC / Section Mapping / Callback Execution / Module Stomping / Process Hollowing), load payload. Enter PID for most techniques; Early Bird, Callback, Stomp, and Hollowing execute locally so PID is not required. Requires live mode + Confirm.
 
 ### Load
 Three sub-tabs:
@@ -42,6 +42,9 @@ Select method (Manual / Ekko), set duration in ms. Demo button runs the encrypt/
 
 ### Spoof
 Select target NT function. Demo button scans for ROP gadgets and builds fake call stack frames. Shows gadget addresses and frame count.
+
+### Persist
+Select method from dropdown (Registry / Scheduled Task / WMI / DLL Placement / COM / Service). Enter name, target (for hijack/COM), and payload path. Execute configures the selected persistence mechanism. Requires live mode + Confirm.
 
 ## Log Panel
 
