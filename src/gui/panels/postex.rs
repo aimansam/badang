@@ -11,6 +11,9 @@ const MODULES: &[(&str, &str)] = &[
     ("psexec", "Remote Service"),
     ("wmi", "Remote Execution (WMI)"),
     ("winrm", "Remote Execution (WinRM)"),
+    ("exfil", "Staged Transfer"),
+    ("socks", "Proxy Relay"),
+    ("portfwd", "Port Relay"),
 ];
 
 pub struct PostExState {
@@ -23,6 +26,10 @@ pub struct PostExState {
     pub command: String,
     pub service_name: String,
     pub payload_path: String,
+    pub file_path: String,
+    pub listen_port: String,
+    pub remote_port: String,
+    pub exfil_key: String,
     pub result_text: String,
     pub error: String,
 }
@@ -39,6 +46,10 @@ impl Default for PostExState {
             command: String::new(),
             service_name: String::new(),
             payload_path: String::new(),
+            file_path: String::new(),
+            listen_port: String::new(),
+            remote_port: String::new(),
+            exfil_key: String::new(),
             result_text: String::new(),
             error: String::new(),
         }
@@ -111,6 +122,42 @@ pub fn draw(ui: &mut egui::Ui, state: &mut PostExState, dry_run: &mut bool, log:
         }
     }
 
+    if module.is_exfil() {
+        ui.horizontal(|ui| {
+            ui.label("File Path:");
+            ui.text_edit_singleline(&mut state.file_path);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Remote Host:");
+            ui.text_edit_singleline(&mut state.remote_host);
+        });
+        ui.horizontal(|ui| {
+            ui.label("Remote Port:");
+            ui.text_edit_singleline(&mut state.remote_port);
+        });
+        ui.horizontal(|ui| {
+            ui.label("RC4 Key (optional):");
+            ui.text_edit_singleline(&mut state.exfil_key);
+        });
+    }
+
+    if module.is_tunnel() {
+        ui.horizontal(|ui| {
+            ui.label("Listen Port:");
+            ui.text_edit_singleline(&mut state.listen_port);
+        });
+        if matches!(module, PostExModule::PortForward) {
+            ui.horizontal(|ui| {
+                ui.label("Remote Host:");
+                ui.text_edit_singleline(&mut state.remote_host);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Remote Port:");
+                ui.text_edit_singleline(&mut state.remote_port);
+            });
+        }
+    }
+
     ui.add_space(8.0);
 
     ui.horizontal(|ui| {
@@ -135,6 +182,7 @@ pub fn draw(ui: &mut egui::Ui, state: &mut PostExState, dry_run: &mut bool, log:
                 postex::dry_run(&module, log);
             } else {
                 let pid: u32 = state.pid_text.parse().unwrap_or(0);
+                let exfil_key = if state.exfil_key.is_empty() { Vec::new() } else { state.exfil_key.as_bytes().to_vec() };
                 let config = postex::PostExConfig {
                     module,
                     pid,
@@ -145,6 +193,11 @@ pub fn draw(ui: &mut egui::Ui, state: &mut PostExState, dry_run: &mut bool, log:
                     command: state.command.clone(),
                     service_name: state.service_name.clone(),
                     payload_path: state.payload_path.clone(),
+                    file_path: state.file_path.clone(),
+                    listen_port: state.listen_port.parse().unwrap_or(0),
+                    remote_host: state.remote_host.clone(),
+                    remote_port: state.remote_port.parse().unwrap_or(0),
+                    exfil_key,
                 };
                 match postex::run_postex(&config, log) {
                     Ok(result) => {

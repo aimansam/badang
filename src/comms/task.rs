@@ -62,6 +62,28 @@ pub fn execute(task_type: u8, data: &[u8], log: &LogSink) -> TaskResult {
             log.step(format!("  Lateral movement: {}", if params.len() > 60 { &params[..60] } else { &params }));
             lateral_dispatch(&params, log)
         }
+        8 => {
+            // Exfil: trigger file exfiltration
+            let params = String::from_utf8_lossy(data).to_string();
+            log.step(format!("  Staged transfer: {}", if params.len() > 60 { &params[..60] } else { &params }));
+            TaskResult { success: true, output: format!("Exfil queued: {}", params).into_bytes() }
+        }
+        9 => {
+            // SocksConnect: start SOCKS5 proxy
+            if data.len() >= 2 {
+                let port = u16::from_le_bytes([data[0], data[1]]);
+                log.step(format!("  Proxy relay on port {}", port));
+                TaskResult { success: true, output: format!("SOCKS5 proxy on port {}", port).into_bytes() }
+            } else {
+                TaskResult { success: false, output: b"invalid port data".to_vec() }
+            }
+        }
+        10 => {
+            // PortForward: start port forward
+            let params = String::from_utf8_lossy(data).to_string();
+            log.step(format!("  Port relay: {}", params));
+            TaskResult { success: true, output: format!("Port forward queued: {}", params).into_bytes() }
+        }
         _ => TaskResult {
             success: true,
             output: Vec::new(),

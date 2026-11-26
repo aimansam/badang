@@ -701,3 +701,89 @@ pub unsafe fn WNetCancelConnection2A(name: *const u8, flags: u32, force: i32) ->
     let f: F = std::mem::transmute(resolve_load(crate::obf::MPR, crate::obf::W_WNET_CANCEL_CONNECTION2_A));
     f(name, flags, force)
 }
+
+// ── ws2_32 socket wrappers ──────────────────────────────────────────────
+
+#[cfg(windows)]
+pub unsafe fn WSAStartup(version: u16, data: *mut c_void) -> i32 {
+    type F = unsafe extern "system" fn(u16, *mut c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_WSA_STARTUP));
+    f(version, data)
+}
+
+#[cfg(windows)]
+pub unsafe fn WSACleanup() -> i32 {
+    type F = unsafe extern "system" fn() -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_WSA_CLEANUP));
+    f()
+}
+
+#[cfg(windows)]
+pub unsafe fn socket(af: i32, sock_type: i32, protocol: i32) -> usize {
+    type F = unsafe extern "system" fn(i32, i32, i32) -> usize;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_SOCKET));
+    f(af, sock_type, protocol)
+}
+
+#[cfg(windows)]
+pub unsafe fn bind(s: usize, addr: *const c_void, len: i32) -> i32 {
+    type F = unsafe extern "system" fn(usize, *const c_void, i32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_BIND));
+    f(s, addr, len)
+}
+
+#[cfg(windows)]
+pub unsafe fn listen(s: usize, backlog: i32) -> i32 {
+    type F = unsafe extern "system" fn(usize, i32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_LISTEN));
+    f(s, backlog)
+}
+
+#[cfg(windows)]
+pub unsafe fn accept(s: usize, addr: *mut c_void, len: *mut i32) -> usize {
+    type F = unsafe extern "system" fn(usize, *mut c_void, *mut i32) -> usize;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_ACCEPT));
+    f(s, addr, len)
+}
+
+#[cfg(windows)]
+pub unsafe fn connect(s: usize, addr: *const c_void, len: i32) -> i32 {
+    type F = unsafe extern "system" fn(usize, *const c_void, i32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_CONNECT));
+    f(s, addr, len)
+}
+
+#[cfg(windows)]
+pub unsafe fn send(s: usize, buf: *const u8, len: i32, flags: i32) -> i32 {
+    type F = unsafe extern "system" fn(usize, *const u8, i32, i32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_SEND));
+    f(s, buf, len, flags)
+}
+
+#[cfg(windows)]
+pub unsafe fn recv(s: usize, buf: *mut u8, len: i32, flags: i32) -> i32 {
+    type F = unsafe extern "system" fn(usize, *mut u8, i32, i32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_RECV));
+    f(s, buf, len, flags)
+}
+
+#[cfg(windows)]
+pub unsafe fn closesocket(s: usize) -> i32 {
+    type F = unsafe extern "system" fn(usize) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_CLOSESOCKET));
+    f(s)
+}
+
+#[cfg(windows)]
+pub unsafe fn select(nfds: i32, read: *mut c_void, write: *mut c_void, except: *mut c_void, timeout: *const c_void) -> i32 {
+    type F = unsafe extern "system" fn(i32, *mut c_void, *mut c_void, *mut c_void, *const c_void) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_SELECT));
+    f(nfds, read, write, except, timeout)
+}
+
+#[cfg(windows)]
+pub unsafe fn ioctlsocket(s: usize, cmd: i32, argp: *mut u32) -> i32 {
+    type F = unsafe extern "system" fn(usize, i32, *mut u32) -> i32;
+    let f: F = std::mem::transmute(resolve_load(crate::obf::WS2_32, crate::obf::W_IOCTLSOCKET));
+    f(s, cmd, argp)
+}

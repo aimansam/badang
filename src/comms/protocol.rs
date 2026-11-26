@@ -14,6 +14,9 @@ pub enum TaskType {
     FileDownload = 5,
     CredDump = 6,
     LateralMove = 7,
+    Exfil = 8,
+    SocksConnect = 9,
+    PortForward = 10,
 }
 
 impl TaskType {
@@ -27,6 +30,9 @@ impl TaskType {
             5 => Some(Self::FileDownload),
             6 => Some(Self::CredDump),
             7 => Some(Self::LateralMove),
+            8 => Some(Self::Exfil),
+            9 => Some(Self::SocksConnect),
+            10 => Some(Self::PortForward),
             _ => None,
         }
     }

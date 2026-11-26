@@ -570,6 +570,11 @@ fn main() {
             } else {
                 let module = badang::postex::PostExModule::from_str(&cli.postex_module)
                     .unwrap_or_else(|e| { eprintln!("ERROR: {}", e); process::exit(1); });
+                let exfil_key = if cli.postex_exfil_key.is_empty() {
+                    Vec::new()
+                } else {
+                    cli.postex_exfil_key.as_bytes().to_vec()
+                };
                 let config = badang::postex::PostExConfig {
                     module,
                     pid: cli.target_pid,
@@ -580,6 +585,11 @@ fn main() {
                     command: cli.postex_command.clone(),
                     service_name: cli.postex_service.clone(),
                     payload_path: cli.postex_payload.clone(),
+                    file_path: cli.postex_file.clone(),
+                    listen_port: cli.postex_listen_port,
+                    remote_host: cli.postex_remote_host.clone(),
+                    remote_port: cli.postex_remote_port,
+                    exfil_key,
                 };
                 match badang::postex::run_postex(&config, &log) {
                     Ok(result) => {

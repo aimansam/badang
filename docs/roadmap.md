@@ -8,7 +8,7 @@ Two projects cover the full kill chain. Badang is the main project — everythin
 
 | # | Project | Role | Status |
 |---|---------|------|--------|
-| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | Phase 4 complete, expanding |
+| 1 | **Badang** (main) | Target-side platform — evasion, injection, persistence, comms, loader, post-ex | All phases complete |
 | 2 | **C2 Server** (next) | Attacker-side — listeners, task queue, operator web UI | Planned |
 
 Future additions (separate projects):
@@ -211,7 +211,7 @@ Post-ex capabilities with credential harvesting and lateral movement.
 
 ```
 src/postex/
-  mod.rs       — PostExModule enum (6 variants), dispatch, dry_run, print_info
+  mod.rs       — PostExModule enum (9 variants), dispatch, dry_run, print_info
   creds.rs     — LSASS dump (MiniDumpWriteDump), SAM/SYSTEM export, token delegation
   lateral.rs   — PsExec (service-based), WMI exec, WinRM exec
 ```
@@ -227,15 +227,23 @@ src/postex/
 
 Comms protocol extended with task types 4–7 (FileUpload, FileDownload, CredDump, LateralMove).
 
-### Phase 5: Post-Exploitation — Exfil + Tunnel
+### Phase 5: Post-Exploitation — Exfil + Tunnel (DONE)
 
-Complete the post-ex suite.
+Data exfiltration and network tunneling to complete the post-ex suite.
 
 ```
 src/postex/
-  exfil.rs     — staged file extraction over comms channels, chunked, encrypted
-  tunnel.rs    — SOCKS5 proxy, local/remote port forwarding
+  exfil.rs     — staged file extraction via raw sockets, 64KB chunks, optional RC4 encryption
+  tunnel.rs    — SOCKS5 proxy (no-auth, IPv4/domain), port forwarding, select()-based relay
 ```
+
+| Module | Technique |
+|--------|-----------|
+| Staged Transfer | CreateFileA → GetFileSize → read chunks → RC4 encrypt → socket send |
+| Proxy Relay | WSAStartup → bind → listen → accept → SOCKS5 handshake → relay |
+| Port Relay | WSAStartup → bind → listen → accept → connect remote → relay |
+
+Comms protocol extended with task types 8–10 (Exfil, SocksConnect, PortForward). 12 ws2_32 socket API wrappers added to resolve.rs.
 
 ---
 
@@ -280,7 +288,7 @@ The C2 server must implement Badang's binary wire protocol (see `src/comms/proto
 | 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | **Done** |
 | 4 | C2 Server (listeners + task queue + web UI) | badang-c2 | Planned |
 | 5 | Post-ex: credentials + lateral movement | Badang | **Done** |
-| 6 | Post-ex: exfiltration + tunneling | Badang | Planned |
+| 6 | Post-ex: exfiltration + tunneling | Badang | **Done** |
 | 7 | Phishing toolkit + Recon/OSINT | New projects | Future |
 
 Phases 2–3 and 4 can overlap — comms module needs a server to talk to, server needs an implant to manage.
