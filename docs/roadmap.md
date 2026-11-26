@@ -445,7 +445,7 @@ Transport: RC4 encrypt the entire message body with the shared hex key. HTTPS wr
 
 ## Tuah — Binary Testing Sandbox
 
-Separate repository (`tuah/`). Docker-based detonation sandbox — runs Badang binaries under Wine in disposable containers, scans with ClamAV + YARA + Windows Defender (via loadlibrary), and verifies Jebat C2 checkin. Named after Hang Tuah — the greatest warrior, the one who proves the others are ready.
+Separate repository (`tuah/`). Docker-based detonation sandbox — runs Badang binaries under Wine in disposable containers, scans with ClamAV + YARA + Windows Defender (via loadlibrary), and verifies Jebat C2 checkin. Also provides multi-binary inspect: point it at a directory of outputs (loader, DLL, shellcode, scripts, delivery payloads) and it classifies each file by type then bulk-scans all with three AV engines. Named after Hang Tuah — the greatest warrior, the one who proves the others are ready.
 
 **Runs on:** Any machine with Docker (Linux, macOS, Windows/WSL)
 
@@ -456,13 +456,14 @@ tuah/
 ├── src/
 │   ├── main.rs         CLI entry (clap subcommands)
 │   ├── config.rs       TOML config structs
-│   ├── sandbox.rs      Docker container lifecycle (scan, run, stop, check)
+│   ├── inspect.rs      Binary classifier (PE, DLL, shellcode, scripts, delivery)
+│   ├── sandbox.rs      Docker container lifecycle (scan, scan-dir, run, check)
 │   ├── scanner.rs      ClamAV + YARA + Defender scan result types
 │   ├── jebat.rs        Jebat API client (login, implants, tasks)
-│   └── report.rs       Test result formatting (pass/fail per step)
+│   └── report.rs       Test + inspect report formatting
 ├── sandbox/
 │   ├── Dockerfile      Multi-stage: loadlibrary build + Wine/ClamAV/YARA/Defender
-│   ├── entrypoint.sh   Scan/run/check dispatcher
+│   ├── entrypoint.sh   Scan/scan-dir/run/run-dll/check dispatcher
 │   └── update-defs.sh  Update Defender definitions without rebuild
 ├── rules/
 │   └── badang.yar      YARA detection rules
@@ -491,12 +492,26 @@ tuah test <binary>
 
 Fresh container per test — no snapshots, no boot wait, seconds to spin up.
 
+### Inspect Flow
+
+```
+tuah inspect <dir>
+  1. Walk directory, classify each file by type
+     (PE EXE, DLL, shellcode, PowerShell, C#, HTA, VBS, LNK, ISO, etc.)
+  2. Mount directory into sandbox container
+  3. Scan ALL files with ClamAV + YARA + Defender in one pass
+  4. Print multi-binary inspect report (kind, size, per-engine results)
+```
+
+Supported types: PE EXE, PE DLL, Shellcode (.bin/.raw/.sc), PowerShell (.ps1), C# (.cs), HTA, VBScript, LNK, ISO, OneNote, HTML Smuggling, VBA Macros. Unknown extensions fall back to magic byte detection.
+
 ### Core Components
 
 | Component | What |
 |-----------|------|
 | **Sandbox** | Docker container management — spin up fresh container per test, mount binary read-only, host networking so Wine-executed implant can reach Jebat, cleanup via `docker rm`. |
-| **Scanner** | ClamAV signature scan + YARA custom rules + Windows Defender (mpengine.dll via loadlibrary) inside the container. Returns JSON: detected/clean per engine, matched rule/threat names. Custom YARA rules in `rules/`. |
+| **Scanner** | ClamAV signature scan + YARA custom rules + Windows Defender (mpengine.dll via loadlibrary) inside the container. Returns JSON: detected/clean per engine, matched rule/threat names. Custom YARA rules in `rules/`. Supports single-file scan and bulk directory scan. |
+| **Inspector** | Walks a directory, classifies each file by extension + magic bytes (PE header characteristics, ISO 9660 magic, HTML smuggling patterns), then delegates bulk scanning to the sandbox. Produces tabular report with per-file kind/size/detection. |
 | **Jebat Client** | Same REST API pattern as `jebat-cli` — JWT login, list implants, queue task, poll task result. Detects new checkin by diffing implant list before/after execution. |
 | **Reporter** | Structured test report: pass/fail per step, timing, agent ID, AV scan results. |
 
@@ -505,6 +520,7 @@ Fresh container per test — no snapshots, no boot wait, seconds to spin up.
 ```
 tuah test <binary>     Full chain test (scan → execute → checkin → task → report)
 tuah scan <binary>     Scan binary with ClamAV + YARA + Defender (no execution)
+tuah inspect <dir>     Inspect directory — classify + bulk scan every binary
 tuah build             Build the sandbox Docker image
 tuah status            Check Docker, sandbox image, and Jebat connectivity
 ```
@@ -803,8 +819,8 @@ lekir/
 │           │               │  TUAH (sandbox)    │           │   │
 │           │               │  Docker sandbox    │           │   │
 │           │               │  Wine + ClamAV     │           │   │
-│           │               │  YARA scan         │──────────►│   │
-│           │               │  verify checkin    │  Jebat    │   │
+│           │               │  YARA + Defender   │──────────►│   │
+│           │               │  inspect + verify  │  Jebat    │   │
 │           │               └────────────────────┘  API      │   │
 │           │                                                │   │
 └───────────┼────────────────────────────────────────────────┼───┘
@@ -844,6 +860,7 @@ lekir/
 | 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 12 | Docker sandbox + Wine exec + ClamAV/YARA/Defender scan + Jebat checkin verify + report | Tuah | Attacker (any with Docker) | **Done** |
+| 12b | Multi-binary inspect: classify (PE/DLL/shellcode/scripts/delivery) + bulk scan directory | Tuah | Attacker (any with Docker) | **Done** |
 | 13 | Core server + SMTP sender + campaign engine + email templates | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 14 | Payload packager (HTA, LNK, VBS, macro) + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 15 | Tracking (pixel, click, download) + results + React web UI | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
@@ -852,7 +869,7 @@ lekir/
 | 18 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
 | 19 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
 
-Badang, Jebat, Tuah, and Kasturi are complete. Build order next: Lekir.
+Badang, Jebat, Tuah (with multi-binary inspect), and Kasturi are complete. Build order next: Lekir.
 
 ---
 
