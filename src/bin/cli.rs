@@ -191,7 +191,7 @@ fn main() {
                 Some(t) => t,
                 None => {
                     eprintln!(
-                            "ERROR: unknown payload type '{}'. Use: exec, messagebox, reverse_tcp, bind_tcp",
+                            "ERROR: unknown payload type '{}'. Use: exec, messagebox, reverse_tcp, bind_tcp, stager",
                             cli.generate_type
                         );
                     process::exit(1);
@@ -210,14 +210,46 @@ fn main() {
             match badang::payload::generate::generate(&config) {
                 Ok(bytes) => {
                     println!("[GENERATE] {} — {} bytes", payload_type.name(), bytes.len());
-                    print!("{}", badang::payload::format::hex_dump(&bytes));
-                    match std::fs::write(&cli.convert_output, &bytes) {
-                        Ok(()) => {
-                            println!("[SAVED] {} bytes -> {}", bytes.len(), cli.convert_output);
+
+                    if !cli.generate_package.is_empty() {
+                        let pkg_format = match badang::payload::package::PackageFormat::from_str(&cli.generate_package) {
+                            Some(f) => f,
+                            None => {
+                                eprintln!(
+                                    "ERROR: unknown package format '{}'. Use: exe, ps1, csharp, dll",
+                                    cli.generate_package
+                                );
+                                process::exit(1);
+                            }
+                        };
+                        match badang::payload::package::package(&bytes, pkg_format) {
+                            Ok(source) => {
+                                println!("[PACKAGE] {} — {} chars", pkg_format.name(), source.len());
+                                match std::fs::write(&cli.convert_output, &source) {
+                                    Ok(()) => {
+                                        println!("[SAVED] {} -> {}", pkg_format.name(), cli.convert_output);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("ERROR: failed to write '{}': {}", cli.convert_output, e);
+                                        process::exit(1);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("ERROR: {}", e);
+                                process::exit(1);
+                            }
                         }
-                        Err(e) => {
-                            eprintln!("ERROR: failed to write '{}': {}", cli.convert_output, e);
-                            process::exit(1);
+                    } else {
+                        print!("{}", badang::payload::format::hex_dump(&bytes));
+                        match std::fs::write(&cli.convert_output, &bytes) {
+                            Ok(()) => {
+                                println!("[SAVED] {} bytes -> {}", bytes.len(), cli.convert_output);
+                            }
+                            Err(e) => {
+                                eprintln!("ERROR: failed to write '{}': {}", cli.convert_output, e);
+                                process::exit(1);
+                            }
                         }
                     }
                 }

