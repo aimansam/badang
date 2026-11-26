@@ -523,7 +523,7 @@ tuah status            Check Docker, sandbox image, and Jebat connectivity
 | CLI | clap | Same as all other tools |
 | Sandbox | Docker + Wine | Portable, no KVM/QEMU required, seconds to spin up |
 | AV | ClamAV + YARA | Signature + custom rule scanning, tunable detection |
-| SSH | ssh/scp (shell out) | Simple, leverages existing SSH config |
+| Config | TOML (toml crate) | Same as all other tools |
 
 ---
 
@@ -597,6 +597,9 @@ kasturi/
 │       ├── it_alert.html
 │       ├── delivery.html
 │       └── meeting.html
+├── Dockerfile                   Multi-stage: rust + node + debian:trixie-slim
+├── docker-compose.yml           Port 8080, kasturi-data volume
+├── .dockerignore
 ├── Cargo.toml                   Workspace root
 └── .gitignore
 ```
@@ -797,10 +800,10 @@ lekir/
 │           │                          │                     │   │
 │           │               ┌──────────▼─────────┐           │   │
 │           │               │  TUAH (sandbox)    │           │   │
-│           │               │  QEMU VM test      │           │   │
-│           │               │  deploy + detonate  │           │   │
-│           │               │  verify checkin    │──────────►│   │
-│           │               │  Defender check    │  Jebat    │   │
+│           │               │  Docker sandbox    │           │   │
+│           │               │  Wine + ClamAV     │           │   │
+│           │               │  YARA scan         │──────────►│   │
+│           │               │  verify checkin    │  Jebat    │   │
 │           │               └────────────────────┘  API      │   │
 │           │                                                │   │
 └───────────┼────────────────────────────────────────────────┼───┘
