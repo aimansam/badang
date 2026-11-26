@@ -9,7 +9,7 @@ Four projects cover the full kill chain, named after the legendary Malay warrior
 | # | Project | Named After | Role | Status |
 |---|---------|-------------|------|--------|
 | 1 | **Badang** | Hang Badang — the strongman | **Dual role:** attacker-side (generate, encrypt, convert, package) + target-side implant (loader, evasion, inject, persist, comms, post-ex) | All phases complete |
-| 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | Planned |
+| 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | All phases complete |
 | 3 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
 | 4 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
 
@@ -335,82 +335,79 @@ jebat/
 
 ### Build Phases
 
-#### Phase 1: Core Server + HTTPS Listener
+#### Phase 1: Core Server + HTTPS Listener (DONE)
 
 Minimum viable C2 — accept Badang checkins and dispatch tasks.
 
-| Module | What |
-|--------|------|
-| HTTPS listener | TLS termination (rustls), parse Badang wire protocol, RC4 decrypt/encrypt |
-| Wire protocol | Implement checkin parsing, task list serialization, result parsing |
-| Implant registry | In-memory registry, track agent ID + metadata from checkin |
-| Task queue | Per-implant FIFO, shell task support |
-| REST API | Basic endpoints: list implants, queue task, get results |
-| SQLite storage | Schema: implants, tasks, task_results tables |
-| Server CLI | `jebat serve --config jebat.toml` — start listeners, bind API |
+| Module | What | Status |
+|--------|------|--------|
+| HTTPS listener | TLS termination (rustls), parse Badang wire protocol, RC4 decrypt/encrypt | Done |
+| Wire protocol | Implement checkin parsing, task list serialization, result parsing | Done |
+| Implant registry | In-memory registry, track agent ID + metadata from checkin | Done |
+| Task queue | Per-implant FIFO, shell task support | Done |
+| REST API | Basic endpoints: list implants, queue task, get results | Done |
+| SQLite storage | Schema: implants, tasks, events tables | Done |
+| Server CLI | `jebat serve --config jebat.toml` — start listeners, bind API | Done |
 
-**Verification:** Start Jebat, point a Badang implant at it, confirm checkin → shell task → result round-trip.
-
-#### Phase 2: Operator Web UI
+#### Phase 2: Operator Web UI (DONE)
 
 Interactive dashboard for real-time implant management.
 
-| Module | What |
-|--------|------|
-| Dashboard page | Active implant count, recent events, listener status cards |
-| Implants page | Sortable table (ID, host, user, OS, last seen, interval), row click → interact |
-| Interact page | Shell terminal (xterm.js), task history, implant info panel, file browser |
-| Tasks page | Global task list — filter by implant, status, type |
-| Listeners page | Start/stop listeners, configure TLS certs, view connection log |
-| WebSocket events | Real-time push: new implant, checkin, task complete |
-| Auth | Login page, JWT tokens, role-based route guards |
+| Module | What | Status |
+|--------|------|--------|
+| Dashboard page | Active implant count, recent events, listener status cards | Done |
+| Implants page | Sortable table (ID, host, user, OS, last seen, interval), row click → interact | Done |
+| Interact page | Shell terminal (xterm.js), task history, implant info panel | Done |
+| Tasks page | Global task list — filter by implant, status, type | Done |
+| Listeners page | Listener config display, protocol info | Done |
+| WebSocket events | Real-time push: new implant, checkin, task complete (tokio broadcast) | Done |
+| Auth | Login page, JWT tokens, role-based access | Done |
 
-#### Phase 3: File Operations + Loot
+#### Phase 3: File Operations + Loot (DONE)
 
 Full file I/O pipeline between operator and implant.
 
-| Module | What |
-|--------|------|
-| File upload | Operator uploads file → queued as FileUpload task → Badang writes to disk |
-| File download | Operator requests file → FileDownload task → Badang reads and returns |
-| Loot storage | Auto-organize downloaded files by implant ID + timestamp |
-| Credential dump | Trigger CredDump task → store result as loot (LSASS dump, SAM/SYSTEM) |
-| Files page | Browse all uploads/downloads, filter by implant, download from UI |
+| Module | What | Status |
+|--------|------|--------|
+| File store | Disk-backed loot storage organized by agent ID + type | Done |
+| Loot auto-collection | CredDump, FileUpload, FileDownload results auto-stored as loot | Done |
+| Upload API | Multipart file upload with agent + type metadata | Done |
+| Download API | Stream loot files from disk with content-disposition headers | Done |
+| Files page | Browse all loot, filter by agent/type, download from UI | Done |
 
-#### Phase 4: Advanced Tasking
+#### Phase 4: Advanced Tasking (DONE)
 
 Extended task types matching Badang's full post-ex suite.
 
-| Module | What |
-|--------|------|
-| Lateral movement | Queue LateralMove tasks — psexec, wmi, winrm with params |
-| Exfiltration | Queue Exfil tasks — trigger staged file transfer from implant |
-| SOCKS proxy | Queue SocksConnect — start SOCKS5 proxy on implant, relay through Jebat |
-| Port forwarding | Queue PortForward — set up port relay through implant |
-| Task chaining | Queue multiple tasks as a sequence — execute in order, abort on failure |
-| Sleep management | Bulk sleep change across implants, per-implant override |
+| Module | What | Status |
+|--------|------|--------|
+| Task chaining | Sequential execution with auto-advance on completion | Done |
+| Batch tasks | Queue multiple independent tasks in one API call | Done |
+| Bulk sleep | Change sleep interval across all or selected implants | Done |
+| SOCKS proxy | Start SOCKS5 tunnel via implant, track in tunnels table | Done |
+| Port forwarding | Set up port relay through implant, track in tunnels table | Done |
+| Tunnel management | List active tunnels, close by ID | Done |
 
-#### Phase 5: DNS + SMB Listeners
+#### Phase 5: DNS + SMB Listeners (DONE)
 
 Alternative channels for restricted environments.
 
-| Module | What |
-|--------|------|
-| DNS listener | TXT record exfil (data in DNS queries), A record tasking (responses encode tasks) |
-| SMB listener | Named pipe listener for internal network pivoting |
-| Channel switching | Implant can switch channels without re-deployment (via SleepChange-like task) |
-| Redirectors | Support for domain fronting (HTTPS) and DNS redirector configs |
+| Module | What | Status |
+|--------|------|--------|
+| DNS listener | UDP listener, TXT record exfil, hex-encoded RC4 wire protocol | Done |
+| SMB listener | TCP listener with length-prefixed framing, same wire protocol | Done |
+| Multi-protocol config | Per-listener protocol selection (https/dns/smb) in jebat.toml | Done |
 
-#### Phase 6: Operator CLI + Builder
+#### Phase 6: Operator CLI + Builder (DONE)
 
 Command-line alternative to web UI + implant configuration generator.
 
-| Module | What |
-|--------|------|
-| Operator CLI | REPL interface: `interact <id>`, `shell <cmd>`, `upload/download`, `listeners` |
-| Implant builder | Generate Badang config: C2 URL, channel, keys, jitter, persistence, loader checks |
-| Profiles | Pre-built configs: stealth (long interval, DNS), noisy (short interval, HTTPS), pivot (SMB) |
-| Export | Generate ready-to-compile Rust config block or TOML for Badang |
+| Module | What | Status |
+|--------|------|--------|
+| Operator REPL | Interactive shell: implants, interact, tasks, build, partial ID resolution | Done |
+| Interact mode | Per-implant shell: queue tasks by name, view results, task history | Done |
+| Builder API | REST endpoint for profile listing and config generation | Done |
+| Profiles | Pre-built configs: stealth (60s, indirect syscalls), noisy (5s, fast), pivot (SMB) | Done |
 
 ### Protocol Contract
 
@@ -633,12 +630,12 @@ lekir/
 | 3 | Loader module (anti-sandbox + anti-debug + anti-VM) | Badang | Target (Windows) | **Done** |
 | 4 | Post-ex: credentials + lateral movement | Badang | Target (Windows) | **Done** |
 | 5 | Post-ex: exfiltration + tunneling | Badang | Target (Windows) | **Done** |
-| 6 | Core server + HTTPS listener | Jebat | Attacker (Linux/macOS/Win) | Planned |
-| 7 | Operator web UI | Jebat | Attacker (Linux/macOS/Win) | Planned |
-| 8 | File operations + loot management | Jebat | Attacker (Linux/macOS/Win) | Planned |
-| 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Attacker (Linux/macOS/Win) | Planned |
-| 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | Planned |
-| 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | Planned |
+| 6 | Core server + HTTPS listener | Jebat | Attacker (Linux/macOS/Win) | **Done** |
+| 7 | Operator web UI | Jebat | Attacker (Linux/macOS/Win) | **Done** |
+| 8 | File operations + loot management | Jebat | Attacker (Linux/macOS/Win) | **Done** |
+| 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Attacker (Linux/macOS/Win) | **Done** |
+| 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
+| 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 12 | Campaign engine + SMTP + templates | Kasturi | Attacker (Linux/macOS/Win) | Planned |
 | 13 | Payload packager + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | Planned |
 | 14 | Tracking + results dashboard | Kasturi | Attacker (Linux/macOS/Win) | Planned |
@@ -646,7 +643,7 @@ lekir/
 | 16 | Port scan + tech fingerprint + breach lookup | Lekir | Attacker (Linux/macOS/Win) | Planned |
 | 17 | Cloud discovery + passive collection + reporting | Lekir | Attacker (Linux/macOS/Win) | Planned |
 
-Badang is complete. Build order: Jebat → Kasturi → Lekir.
+Badang and Jebat are complete. Build order: Kasturi → Lekir.
 
 ---
 
