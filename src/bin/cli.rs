@@ -204,6 +204,8 @@ fn main() {
                 text: cli.generate_text.clone(),
                 lhost: cli.generate_lhost.clone(),
                 lport: cli.generate_lport,
+                url: cli.generate_url.clone(),
+                stager_key: cli.generate_stager_key.clone(),
             };
             match badang::payload::generate::generate(&config) {
                 Ok(bytes) => {

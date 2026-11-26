@@ -56,6 +56,8 @@ fn test_cli_struct() {
         sleep_method: "manual".to_string(),
         sleep_duration: 3000,
         spoof_func: "NtAllocateVirtualMemory".to_string(),
+        generate_url: String::new(),
+        generate_stager_key: String::new(),
     };
     assert_eq!(cli.command, "analyze");
     assert!(cli.dry_run);

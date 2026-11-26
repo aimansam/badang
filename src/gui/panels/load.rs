@@ -31,6 +31,8 @@ pub struct LoadState {
     generate_text: String,
     generate_lhost: String,
     generate_lport: String,
+    generate_url: String,
+    generate_stager_key: String,
     generated_bytes: Option<Vec<u8>>,
     generate_error: String,
 }
@@ -53,6 +55,8 @@ impl Default for LoadState {
             generate_text: String::from("Hello from Badang"),
             generate_lhost: String::from("127.0.0.1"),
             generate_lport: String::from("4444"),
+            generate_url: String::new(),
+            generate_stager_key: String::new(),
             generated_bytes: None,
             generate_error: String::new(),
         }
@@ -279,6 +283,16 @@ fn draw_generate_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
                 ui.add(egui::TextEdit::singleline(&mut state.generate_lport).desired_width(80.0));
             });
         }
+        PayloadType::Stager => {
+            ui.horizontal(|ui| {
+                ui.label("URL:");
+                ui.text_edit_singleline(&mut state.generate_url);
+            });
+            ui.horizontal(|ui| {
+                ui.label("Key:");
+                ui.text_edit_singleline(&mut state.generate_stager_key);
+            });
+        }
     }
 
     if !state.generate_error.is_empty() {
@@ -300,6 +314,8 @@ fn draw_generate_mode(ui: &mut egui::Ui, state: &mut LoadState, log: &LogSink) {
                 text: state.generate_text.clone(),
                 lhost: state.generate_lhost.clone(),
                 lport,
+                url: state.generate_url.clone(),
+                stager_key: state.generate_stager_key.clone(),
             };
 
             match generate::generate(&config) {

