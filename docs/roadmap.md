@@ -10,7 +10,7 @@ Five projects cover the full kill chain, named after the legendary Malay warrior
 |---|---------|-------------|------|--------|
 | 1 | **Badang** | Hang Badang — the strongman | **Dual role:** attacker-side (generate, encrypt, convert, package) + target-side implant (loader, evasion, inject, persist, comms, post-ex) | All phases complete |
 | 2 | **Jebat** | Hang Jebat — the commander | C2 server — listeners, task queue, implant management, operator UI | All phases complete |
-| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — Docker + Wine + ClamAV + YARA, execute Badang builds, verify Jebat checkin, AV evasion scoring | Complete |
+| 3 | **Tuah** | Hang Tuah — the greatest warrior | Binary testing sandbox — Docker + Wine + ClamAV + YARA + Defender, execute Badang builds, verify Jebat checkin, AV evasion scoring | Complete |
 | 4 | **Kasturi** | Hang Kasturi — kasturi means "musk" (the lure) | Phishing toolkit — email templates, macro/HTA/LNK/ISO packaging, tracking | Planned |
 | 5 | **Lekir** | Hang Lekir — the scout | Recon/OSINT — subdomain enum, email harvest, tech fingerprint, breach lookup | Planned |
 
@@ -445,7 +445,7 @@ Transport: RC4 encrypt the entire message body with the shared hex key. HTTPS wr
 
 ## Tuah — Binary Testing Sandbox
 
-Separate repository (`tuah/`). Docker-based detonation sandbox — runs Badang binaries under Wine in disposable containers, scans with ClamAV + YARA, and verifies Jebat C2 checkin. Named after Hang Tuah — the greatest warrior, the one who proves the others are ready.
+Separate repository (`tuah/`). Docker-based detonation sandbox — runs Badang binaries under Wine in disposable containers, scans with ClamAV + YARA + Windows Defender (via loadlibrary), and verifies Jebat C2 checkin. Named after Hang Tuah — the greatest warrior, the one who proves the others are ready.
 
 **Runs on:** Any machine with Docker (Linux, macOS, Windows/WSL)
 
@@ -457,12 +457,13 @@ tuah/
 │   ├── main.rs         CLI entry (clap subcommands)
 │   ├── config.rs       TOML config structs
 │   ├── sandbox.rs      Docker container lifecycle (scan, run, stop, check)
-│   ├── scanner.rs      ClamAV + YARA scan result types
+│   ├── scanner.rs      ClamAV + YARA + Defender scan result types
 │   ├── jebat.rs        Jebat API client (login, implants, tasks)
 │   └── report.rs       Test result formatting (pass/fail per step)
 ├── sandbox/
-│   ├── Dockerfile      Wine + ClamAV + YARA image (Debian)
-│   └── entrypoint.sh   Scan/run/check dispatcher
+│   ├── Dockerfile      Multi-stage: loadlibrary build + Wine/ClamAV/YARA/Defender
+│   ├── entrypoint.sh   Scan/run/check dispatcher
+│   └── update-defs.sh  Update Defender definitions without rebuild
 ├── rules/
 │   └── badang.yar      YARA detection rules
 ├── config/
@@ -479,7 +480,7 @@ tuah/
 ```
 tuah test <binary>
   1. Check sandbox Docker image exists
-  2. Scan binary with ClamAV + YARA
+  2. Scan binary with ClamAV + YARA + Defender
   3. Connect to Jebat, record implant list
   4. Run binary in Docker container (Wine)
   5. Poll Jebat for new implant checkin
@@ -495,7 +496,7 @@ Fresh container per test — no snapshots, no boot wait, seconds to spin up.
 | Component | What |
 |-----------|------|
 | **Sandbox** | Docker container management — spin up fresh container per test, mount binary read-only, host networking so Wine-executed implant can reach Jebat, cleanup via `docker rm`. |
-| **Scanner** | ClamAV signature scan + YARA custom rules inside the container. Returns JSON: detected/clean per engine, matched rule names. Custom rules in `rules/`. |
+| **Scanner** | ClamAV signature scan + YARA custom rules + Windows Defender (mpengine.dll via loadlibrary) inside the container. Returns JSON: detected/clean per engine, matched rule/threat names. Custom YARA rules in `rules/`. |
 | **Jebat Client** | Same REST API pattern as `jebat-cli` — JWT login, list implants, queue task, poll task result. Detects new checkin by diffing implant list before/after execution. |
 | **Reporter** | Structured test report: pass/fail per step, timing, agent ID, AV scan results. |
 
@@ -503,7 +504,7 @@ Fresh container per test — no snapshots, no boot wait, seconds to spin up.
 
 ```
 tuah test <binary>     Full chain test (scan → execute → checkin → task → report)
-tuah scan <binary>     Scan binary with ClamAV + YARA (no execution)
+tuah scan <binary>     Scan binary with ClamAV + YARA + Defender (no execution)
 tuah build             Build the sandbox Docker image
 tuah status            Check Docker, sandbox image, and Jebat connectivity
 ```
@@ -522,7 +523,7 @@ tuah status            Check Docker, sandbox image, and Jebat connectivity
 | HTTP | reqwest | Jebat API client |
 | CLI | clap | Same as all other tools |
 | Sandbox | Docker + Wine | Portable, no KVM/QEMU required, seconds to spin up |
-| AV | ClamAV + YARA | Signature + custom rule scanning, tunable detection |
+| AV | ClamAV + YARA + Defender | Signature + custom rule + Defender engine (loadlibrary) |
 | Config | TOML (toml crate) | Same as all other tools |
 
 ---
@@ -842,7 +843,7 @@ lekir/
 | 9 | Advanced tasking (lateral, exfil, tunnel) | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 10 | DNS + SMB listeners | Jebat | Attacker (Linux/macOS/Win) | **Done** |
 | 11 | Operator CLI + implant builder | Jebat | Attacker (Linux/macOS/Win) | **Done** |
-| 12 | Docker sandbox + Wine exec + ClamAV/YARA scan + Jebat checkin verify + report | Tuah | Attacker (any with Docker) | **Done** |
+| 12 | Docker sandbox + Wine exec + ClamAV/YARA/Defender scan + Jebat checkin verify + report | Tuah | Attacker (any with Docker) | **Done** |
 | 13 | Core server + SMTP sender + campaign engine + email templates | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 14 | Payload packager (HTA, LNK, VBS, macro) + landing page cloner | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
 | 15 | Tracking (pixel, click, download) + results + React web UI | Kasturi | Attacker (Linux/macOS/Win) | **Done** |
